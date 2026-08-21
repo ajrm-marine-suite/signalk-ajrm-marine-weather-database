@@ -1,20 +1,46 @@
 {
   "name": "signalk-ajrm-marine-weather-database",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Provider-neutral durable weather database and forecast service for AJRM Marine Suite.",
-  "keywords": ["signalk-node-server-plugin", "signalk-webapp", "signalk-category-weather", "signal-k", "weather", "marine", "offline"],
+  "keywords": [
+    "signalk-node-server-plugin",
+    "signalk-webapp",
+    "signalk-category-weather",
+    "signal-k",
+    "weather",
+    "marine",
+    "offline"
+  ],
   "main": "plugin/index.cjs",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "icon": "./icon-120.png",
   "scripts": {
     "test": "node --check plugin/index.cjs && node --check plugin/database.cjs && node --check plugin/aggregation.cjs && node --check plugin/provider-registry.cjs && node --check plugin/providers/open-meteo.cjs && node --check public/app.js && node --test test/*.test.cjs"
   },
   "signalk-plugin-enabled-by-default": true,
-  "signalk": { "displayName": "AJRM Marine Weather Database", "appIcon": "./icon-120.png" },
-  "repository": { "type": "git", "url": "git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-weather-database.git" },
+  "signalk": {
+    "displayName": "AJRM Marine Weather Database",
+    "appIcon": "./icon-120.png"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-weather-database.git"
+  },
   "author": "Anthony McDonald, with assistance from William McAusland",
   "license": "AGPL-3.0-or-later",
-  "bugs": { "url": "https://github.com/ajrm-marine-suite/signalk-ajrm-marine-weather-database/issues" },
+  "bugs": {
+    "url": "https://github.com/ajrm-marine-suite/signalk-ajrm-marine-weather-database/issues"
+  },
   "homepage": "https://github.com/ajrm-marine-suite/signalk-ajrm-marine-weather-database#readme",
-  "files": ["plugin", "public", "icon.svg", "icon-120.png", "README.md", "CHANGELOG.md", "LICENSE"]
+  "files": [
+    "plugin",
+    "public",
+    "icon.svg",
+    "icon-120.png",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ]
 }

@@ -26,4 +26,5 @@ Provider records are stored separately on disk. Fresh cache entries avoid a netw
 - diagnostics: `app.ajrmMarineWeatherDiagnostics`
 - compact Signal K path: `plugins.ajrmMarineWeatherDatabase.weather`
 
-Forecast speeds and angles use Signal K SI units. Provider-native hourly payloads are retained for existing planner compatibility.
+Forecast speeds and angles use Signal K SI units. Provider-native hourly
+payloads are retained as explicit provenance and for current Planning detail views.

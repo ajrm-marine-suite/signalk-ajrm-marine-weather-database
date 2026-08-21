@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.3 — 2026-08-21
+
+- Clarifies that provider-native hourly data is current forecast provenance and
+  Planning detail input, rather than a legacy compatibility payload.
+
 ## 0.1.2 — 2026-08-21
 
 - Remove the one-time Location Editor weather-cache importer and its legacy cache-shape support.
