@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.5 — 2026-08-21
+
+- Resolve named weather forecast points from Location Editor and expose them
+  through the service and web API.
+- Add a remembered forecast-location selector, explicit refresh action and the
+  same concise hourly weather/marine table used by Planning.
+- Reuse provider-separated persistent caches for each selected coordinate.
+
 ## 0.1.4 — 2026-08-21
 
 - Publish the explicit weather status contract on the Signal K status path so

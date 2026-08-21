@@ -51,6 +51,7 @@ module.exports = function ajrmMarineWeatherDatabase(app) {
 			contract:"ajrm-marine-weather-database-service-v1", contractVersion:1,
 			status:(request = {}) => resolve(request), refresh:(request = {}) => resolve({ ...request, force:true }),
 			databaseStatus:() => databaseStatus(), listProviders:() => providers.list(),
+			listLocations:() => weatherLocations(),
 		});
 		app.ajrmMarineWeatherDatabase = service;
 		globalThis[SERVICE_SYMBOL] = service;
@@ -84,6 +85,7 @@ module.exports = function ajrmMarineWeatherDatabase(app) {
 	plugin.registerWithRouter = (router) => {
 		router.get("/status", async (_req,res) => res.json(await databaseStatus()));
 		router.get("/providers", (_req,res) => res.json(providers?.list?.() || []));
+		router.get("/locations", async (_req,res) => res.json(await weatherLocations()));
 		router.get("/weather/status", async (req,res) => sendProjection(res, weatherRequest(req), false));
 		router.post("/weather/refresh", write(async (req,res) => sendProjection(res, weatherRequest(req), true)));
 	};
@@ -93,6 +95,20 @@ module.exports = function ajrmMarineWeatherDatabase(app) {
 		catch (error) { res.status(400).json({ error:error.message }); }
 	}
 	function locationsService() { return app.ajrmMarineLocations || globalThis[LOCATION_SYMBOL] || null; }
+	async function weatherLocations() {
+		const locations = await locationsService()?.list?.({ workspace:"weather" }) || [];
+		return locations
+			.filter((location) => location?.types?.includes("weatherForecastLocation"))
+			.map((location) => ({
+				id:location.id,
+				name:location.name,
+				description:location.description || "",
+				position:representativePosition(location),
+				revision:location.revision || null,
+			}))
+			.filter((location) => Number.isFinite(location.position?.latitude) && Number.isFinite(location.position?.longitude))
+			.sort((left,right) => left.name.localeCompare(right.name));
+	}
 	async function resolve(request = {}) {
 		let contextLocation = null;
 		if (request.contextLocationId) {
@@ -107,8 +123,11 @@ module.exports = function ajrmMarineWeatherDatabase(app) {
 	}
 	async function databaseStatus() {
 		const stored = database ? await database.status() : { providers:[], cacheEntries:0 };
+		const forecastLocations = await weatherLocations();
 		return { contract:"ajrm-marine-weather-database-status-v1", contractVersion:1, plugin:plugin.id,
-			version:packageJson.version, enabled:running, ...stored, latest:latestProjection ? withoutHourly(latestProjection) : null,
+			version:packageJson.version, enabled:running, ...stored, weatherLocationCount:forecastLocations.length,
+			locationsService:locationsService()?.contract || null,
+			latest:latestProjection ? withoutHourly(latestProjection) : null,
 			updatedAt:new Date().toISOString() };
 	}
 	function weatherRequest(req) {

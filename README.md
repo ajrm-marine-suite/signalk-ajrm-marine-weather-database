@@ -2,6 +2,13 @@
 
 A standalone Signal K weather database for AJRM Marine Suite. It owns network-provider access, durable offline caches, freshness, provenance and forecast selection. Location Editor remains the spatial catalogue; Display and Marine Planning consume this service.
 
+The webapp lists Location records classified as `weatherForecastLocation`.
+Selecting one displays the same concise hourly weather/marine columns used by
+Marine Planning's **Fetched Weather** tab. Selection is remembered in the
+browser. **Load forecast** reuses a fresh provider cache and refreshes stale or
+missing data; **Refresh forecast** explicitly asks every enabled provider for a
+new forecast. Provider data remain in Weather Database, never in Locations.
+
 ## Provider architecture
 
 The first adapter is Open-Meteo, covering atmospheric and marine hourly forecasts. The registry can run multiple enabled providers **simultaneously**. Each provider has its own cache and failure state. The resolver:
@@ -22,9 +29,18 @@ Provider records are stored separately on disk. Fresh cache entries avoid a netw
 ## Signal K contracts
 
 - `app.ajrmMarineWeatherDatabase`: `ajrm-marine-weather-database-service-v1`
+- named forecast locations: Location Editor records classified as `weatherForecastLocation`
 - projection: `ajrm-marine-weather-projection-v2`
 - diagnostics: `app.ajrmMarineWeatherDiagnostics`
 - compact Signal K path: `plugins.ajrmMarineWeatherDatabase.weather`
 
 Forecast speeds and angles use Signal K SI units. Provider-native hourly
 payloads are retained as explicit provenance and for current Planning detail views.
+
+## Install
+
+```sh
+cd ~/.signalk
+npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-weather-database.git#v0.1.5 --omit=dev --no-package-lock
+sudo systemctl restart signalk
+```

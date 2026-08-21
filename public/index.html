@@ -1,3 +1,11 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AJRM Marine Weather Database</title><link rel="stylesheet" href="styles.css"></head><body>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AJRM Marine Weather Database</title><link rel="stylesheet" href="styles.css?v=0.1.5"></head><body>
 <header><img src="icon.svg" alt=""><div><h1>Weather Database</h1><p>Provider caches, freshness and explicit forecast selection</p></div><button id="refresh" type="button">Refresh status</button></header>
-<main><section><h2>Providers</h2><p id="summary">Loading…</p><table><thead><tr><th>Provider</th><th>Enabled</th><th>Configured</th><th>Cache entries</th><th>Capabilities</th></tr></thead><tbody id="providers"></tbody></table></section><section><h2>Latest resolved forecast</h2><pre id="latest">No forecast has been requested yet.</pre></section></main><script src="app.js"></script></body></html>
+<main>
+<section><h2>Providers</h2><p id="summary">Loading…</p><table><thead><tr><th>Provider</th><th>Enabled</th><th>Configured</th><th>Cache entries</th><th>Capabilities</th></tr></thead><tbody id="providers"></tbody></table></section>
+<section class="forecast-window">
+	<div class="forecast-heading"><div><h2>Forecast locations</h2><p>Select a named forecast point from Location Editor. A fresh stored forecast is reused; stale or missing data are fetched.</p></div><div class="forecast-actions"><label>Weather location<select id="weatherLocation"><option value="">Select a weather location…</option></select></label><button id="loadForecast" type="button">Load forecast</button><button id="refreshForecast" type="button">Refresh forecast</button></div></div>
+	<div id="forecastStatus" class="forecast-status">No weather location selected.</div>
+	<div class="table-wrap"><table id="forecastTable"><thead></thead><tbody></tbody></table></div>
+</section>
+<section><details><summary>Latest resolved forecast diagnostics</summary><pre id="latest">No forecast has been requested yet.</pre></details></section>
+</main><script type="module" src="app.js?v=0.1.5"></script></body></html>
