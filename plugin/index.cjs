@@ -61,7 +61,15 @@ module.exports = function ajrmMarineWeatherDatabase(app) {
 		subscribePosition();
 		publishMetadata();
 		app.setPluginStatus?.(`Started v${packageJson.version}; ${providers.enabled().length} enabled provider(s)`);
-		publish(STATUS_PATH, { enabled:true, version:packageJson.version, providers:providers.list(), updatedAt:new Date().toISOString() });
+		publish(STATUS_PATH, {
+			contract:"ajrm-marine-weather-database-status-v1",
+			contractVersion:1,
+			plugin:plugin.id,
+			enabled:true,
+			version:packageJson.version,
+			providers:providers.list(),
+			updatedAt:new Date().toISOString(),
+		});
 	};
 
 	plugin.stop = () => {

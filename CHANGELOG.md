@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.4 — 2026-08-21
+
+- Publish the explicit weather status contract on the Signal K status path so
+  Console preflight and cross-app BITE can validate the running service.
+
 ## 0.1.3 — 2026-08-21
 
 - Clarifies that provider-native hourly data is current forecast provenance and

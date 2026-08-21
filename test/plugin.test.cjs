@@ -8,6 +8,11 @@ test("plugin registers standalone weather service and retracts it on stop",async
 	assert.equal(app.ajrmMarineWeatherDatabase.contract,"ajrm-marine-weather-database-service-v1");
 	assert.equal(globalThis[Symbol.for("mcdonaldajr.ajrmMarineWeatherDatabase")],app.ajrmMarineWeatherDatabase);
 	const status=await app.ajrmMarineWeatherDatabase.databaseStatus(); assert.equal(status.contract,"ajrm-marine-weather-database-status-v1"); assert.equal(status.providers[0].enabled,false);
+	const publishedStatus=messages.flatMap((message)=>message.updates || []).flatMap((update)=>update.values || []).find((value)=>value.path==="plugins.ajrmMarineWeatherDatabase")?.value;
+	assert.equal(publishedStatus.contract,"ajrm-marine-weather-database-status-v1");
+	assert.equal(publishedStatus.contractVersion,1);
+	assert.equal(publishedStatus.plugin,"signalk-ajrm-marine-weather-database");
+	assert.equal(publishedStatus.enabled,true);
 	plugin.stop(); assert.equal(app.ajrmMarineWeatherDatabase,undefined); assert.equal(globalThis[Symbol.for("mcdonaldajr.ajrmMarineWeatherDatabase")],undefined);
 	assert.ok(messages.some((message)=>message.updates?.some((update)=>update.values?.some((value)=>value.path==="plugins.ajrmMarineWeatherDatabase"))));
 });
