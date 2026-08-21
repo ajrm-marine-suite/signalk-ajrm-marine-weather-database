@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.7 — 2026-08-21
+
+- Add live search across selectable weather-location names, kinds and
+  descriptions while retaining the grouped selector and remembered choice.
+
 ## 0.1.6 — 2026-08-21
 
 - Allow forecasts to be selected for any Location-owned harbour, marina,

@@ -7,7 +7,8 @@ anchorage, mooring, tidal gate, standard tidal port and secondary tidal port hel
 Location Editor. The selector groups them by kind so similarly named records
 remain distinguishable. Selecting one displays the same concise hourly weather/marine columns used by
 Marine Planning's **Fetched Weather** tab. Selection is remembered in the
-browser. **Load forecast** reuses a fresh provider cache and refreshes stale or
+browser. The live search matches location names, kinds and descriptions.
+**Load forecast** reuses a fresh provider cache and refreshes stale or
 missing data; **Refresh forecast** explicitly asks every enabled provider for a
 new forecast. Provider data remain in Weather Database, never in Locations.
 
@@ -45,6 +46,6 @@ payloads are retained as explicit provenance and for current Planning detail vie
 
 ```sh
 cd ~/.signalk
-npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-weather-database.git#v0.1.6 --omit=dev --no-package-lock
+npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-weather-database.git#v0.1.7 --omit=dev --no-package-lock
 sudo systemctl restart signalk
 ```

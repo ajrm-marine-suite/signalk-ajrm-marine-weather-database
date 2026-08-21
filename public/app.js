@@ -1,10 +1,12 @@
 /** Weather Database webapp: provider status plus named, cached forecast inspection. */
 
-import { renderForecastTable } from "./weather-forecast-view.mjs?v=0.1.6";
+import { renderForecastTable } from "./weather-forecast-view.mjs?v=0.1.7";
+import { filterWeatherLocations } from "./weather-location-search.mjs?v=0.1.7";
 
 const apiBase = "/plugins/signalk-ajrm-marine-weather-database";
 const selectedLocationKey = "ajrmMarineWeatherDatabaseSelectedLocation";
 const $ = (id) => document.getElementById(id);
+let allWeatherLocations = [];
 
 async function requestJson(url, options = {}) {
 	const response = await fetch(url, { headers:{ "Content-Type":"application/json" }, ...options });
@@ -52,8 +54,8 @@ async function loadStatus() {
 	finally { setBusy($("refresh"), false); }
 }
 
-async function loadLocations() {
-	const locations = await requestJson(`${apiBase}/locations`);
+function renderLocations() {
+	const locations = filterWeatherLocations(allWeatherLocations, $("locationSearch").value);
 	const selected = localStorage.getItem(selectedLocationKey) || "";
 	const select = $("weatherLocation");
 	select.replaceChildren(new Option("Select a port, anchorage, gate or forecast point…", ""));
@@ -69,6 +71,13 @@ async function loadLocations() {
 		groups.get(category).append(new Option(location.name, location.id));
 	}
 	if (locations.some((location) => location.id === selected)) $("weatherLocation").value = selected;
+	$("locationSearchStatus").textContent = `${locations.length} of ${allWeatherLocations.length} locations shown`;
+	return locations;
+}
+
+async function loadLocations() {
+	allWeatherLocations = await requestJson(`${apiBase}/locations`);
+	const locations = renderLocations();
 	return locations;
 }
 
@@ -103,6 +112,7 @@ $("weatherLocation").addEventListener("change", () => {
 	localStorage.setItem(selectedLocationKey, $("weatherLocation").value);
 	if ($("weatherLocation").value) loadForecast(false);
 });
+$("locationSearch").addEventListener("input", renderLocations);
 
 async function start() {
 	await Promise.all([loadStatus(), loadLocations()]);
