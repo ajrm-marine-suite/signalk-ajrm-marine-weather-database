@@ -12,6 +12,26 @@ const DIAGNOSTICS_SYMBOL = Symbol.for("mcdonaldajr.ajrmMarineWeatherDiagnostics"
 const LOCATION_SYMBOL = Symbol.for("mcdonaldajr.ajrmMarineLocations");
 const STATUS_PATH = "plugins.ajrmMarineWeatherDatabase";
 const WEATHER_PATH = "plugins.ajrmMarineWeatherDatabase.weather";
+const WEATHER_LOCATION_TYPES = Object.freeze(new Set([
+	"weatherForecastLocation",
+	"harbour",
+	"marina",
+	"anchorage",
+	"mooring",
+	"tidalStandardPort",
+	"tidalSecondaryPort",
+	"tidalGate",
+]));
+const WEATHER_LOCATION_CATEGORIES = Object.freeze([
+	["weatherForecastLocation", "Forecast point"],
+	["anchorage", "Anchorage"],
+	["mooring", "Mooring"],
+	["marina", "Marina"],
+	["harbour", "Harbour"],
+	["tidalSecondaryPort", "Secondary tidal port"],
+	["tidalStandardPort", "Standard tidal port"],
+	["tidalGate", "Tidal gate"],
+]);
 
 function representativePosition(location) {
 	const geometry = location?.feature?.geometry;
@@ -95,19 +115,24 @@ module.exports = function ajrmMarineWeatherDatabase(app) {
 		catch (error) { res.status(400).json({ error:error.message }); }
 	}
 	function locationsService() { return app.ajrmMarineLocations || globalThis[LOCATION_SYMBOL] || null; }
+	function weatherLocationCategory(location) {
+		return WEATHER_LOCATION_CATEGORIES.find(([type]) => location?.types?.includes(type))?.[1] || "Weather location";
+	}
 	async function weatherLocations() {
-		const locations = await locationsService()?.list?.({ workspace:"weather" }) || [];
+		const locations = await locationsService()?.list?.() || [];
 		return locations
-			.filter((location) => location?.types?.includes("weatherForecastLocation"))
+			.filter((location) => location?.types?.some((type) => WEATHER_LOCATION_TYPES.has(type)))
 			.map((location) => ({
 				id:location.id,
 				name:location.name,
 				description:location.description || "",
+				types:location.types.filter((type) => WEATHER_LOCATION_TYPES.has(type)),
+				category:weatherLocationCategory(location),
 				position:representativePosition(location),
 				revision:location.revision || null,
 			}))
 			.filter((location) => Number.isFinite(location.position?.latitude) && Number.isFinite(location.position?.longitude))
-			.sort((left,right) => left.name.localeCompare(right.name));
+			.sort((left,right) => left.category.localeCompare(right.category) || left.name.localeCompare(right.name));
 	}
 	async function resolve(request = {}) {
 		let contextLocation = null;

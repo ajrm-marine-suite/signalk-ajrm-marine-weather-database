@@ -1,10 +1,10 @@
 {
   "openapi":"3.0.3",
-  "info":{"title":"AJRM Marine Weather Database API","version":"0.1.5"},
+  "info":{"title":"AJRM Marine Weather Database API","version":"0.1.6"},
   "paths":{
     "/status":{"get":{"responses":{"200":{"description":"Provider and cache status"}}}},
     "/providers":{"get":{"responses":{"200":{"description":"Configured providers in selection priority order"}}}},
-		"/locations":{"get":{"responses":{"200":{"description":"Named weather forecast locations supplied by Location Editor"}}}},
+		"/locations":{"get":{"responses":{"200":{"description":"Forecast points, ports, marinas, anchorages, moorings and tidal gates supplied by Location Editor"}}}},
     "/weather/status":{"get":{"responses":{"200":{"description":"Cached multi-provider weather projection"}}}},
     "/weather/refresh":{"post":{"responses":{"200":{"description":"Refresh all enabled providers concurrently"}}}}
   }

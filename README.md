@@ -2,8 +2,10 @@
 
 A standalone Signal K weather database for AJRM Marine Suite. It owns network-provider access, durable offline caches, freshness, provenance and forecast selection. Location Editor remains the spatial catalogue; Display and Marine Planning consume this service.
 
-The webapp lists Location records classified as `weatherForecastLocation`.
-Selecting one displays the same concise hourly weather/marine columns used by
+The webapp lists dedicated forecast points plus every harbour, marina,
+anchorage, mooring, tidal gate, standard tidal port and secondary tidal port held by
+Location Editor. The selector groups them by kind so similarly named records
+remain distinguishable. Selecting one displays the same concise hourly weather/marine columns used by
 Marine Planning's **Fetched Weather** tab. Selection is remembered in the
 browser. **Load forecast** reuses a fresh provider cache and refreshes stale or
 missing data; **Refresh forecast** explicitly asks every enabled provider for a
@@ -29,7 +31,9 @@ Provider records are stored separately on disk. Fresh cache entries avoid a netw
 ## Signal K contracts
 
 - `app.ajrmMarineWeatherDatabase`: `ajrm-marine-weather-database-service-v1`
-- named forecast locations: Location Editor records classified as `weatherForecastLocation`
+- selectable forecast locations: Location Editor records classified as
+  `weatherForecastLocation`, `harbour`, `marina`, `anchorage`, `mooring`,
+  `tidalStandardPort`, `tidalSecondaryPort` or `tidalGate`
 - projection: `ajrm-marine-weather-projection-v2`
 - diagnostics: `app.ajrmMarineWeatherDiagnostics`
 - compact Signal K path: `plugins.ajrmMarineWeatherDatabase.weather`
@@ -41,6 +45,6 @@ payloads are retained as explicit provenance and for current Planning detail vie
 
 ```sh
 cd ~/.signalk
-npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-weather-database.git#v0.1.5 --omit=dev --no-package-lock
+npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-weather-database.git#v0.1.6 --omit=dev --no-package-lock
 sudo systemctl restart signalk
 ```

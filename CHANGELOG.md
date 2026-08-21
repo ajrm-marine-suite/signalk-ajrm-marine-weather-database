@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.6 — 2026-08-21
+
+- Allow forecasts to be selected for any Location-owned harbour, marina,
+  anchorage, mooring, tidal gate, standard tidal port or secondary tidal port as well as
+  dedicated weather forecast points.
+- Group selectable places by kind so duplicate or similar names remain clear.
+
 ## 0.1.5 — 2026-08-21
 
 - Resolve named weather forecast points from Location Editor and expose them

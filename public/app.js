@@ -1,6 +1,6 @@
 /** Weather Database webapp: provider status plus named, cached forecast inspection. */
 
-import { renderForecastTable } from "./weather-forecast-view.mjs?v=0.1.5";
+import { renderForecastTable } from "./weather-forecast-view.mjs?v=0.1.6";
 
 const apiBase = "/plugins/signalk-ajrm-marine-weather-database";
 const selectedLocationKey = "ajrmMarineWeatherDatabaseSelectedLocation";
@@ -55,7 +55,19 @@ async function loadStatus() {
 async function loadLocations() {
 	const locations = await requestJson(`${apiBase}/locations`);
 	const selected = localStorage.getItem(selectedLocationKey) || "";
-	$("weatherLocation").replaceChildren(new Option("Select a weather location…", ""), ...locations.map((location) => new Option(location.name, location.id)));
+	const select = $("weatherLocation");
+	select.replaceChildren(new Option("Select a port, anchorage, gate or forecast point…", ""));
+	const groups = new Map();
+	for (const location of locations) {
+		const category = location.category || "Weather location";
+		if (!groups.has(category)) {
+			const group = document.createElement("optgroup");
+			group.label = category;
+			groups.set(category, group);
+			select.append(group);
+		}
+		groups.get(category).append(new Option(location.name, location.id));
+	}
 	if (locations.some((location) => location.id === selected)) $("weatherLocation").value = selected;
 	return locations;
 }
