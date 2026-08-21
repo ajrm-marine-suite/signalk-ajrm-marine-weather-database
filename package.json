@@ -1,6 +1,6 @@
 {
   "name": "signalk-ajrm-marine-weather-database",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Provider-neutral durable weather database and forecast service for AJRM Marine Suite.",
   "keywords": ["signalk-node-server-plugin", "signalk-webapp", "signalk-category-weather", "signal-k", "weather", "marine", "offline"],
   "main": "plugin/index.cjs",
