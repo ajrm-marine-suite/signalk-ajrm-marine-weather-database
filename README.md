@@ -19,8 +19,6 @@ This makes later provider additions additive rather than a replacement for Open-
 
 Provider records are stored separately on disk. Fresh cache entries avoid a network call. If refresh fails, a non-expired entry is returned as an explicit offline fallback with the failure reason. Expired data remain visible in database diagnostics but are not presented as a valid forecast.
 
-On first start, valid Open-Meteo cache files left by Location Editor are imported into the new provider-specific store, so upgrading does not needlessly discard usable offline forecasts.
-
 ## Signal K contracts
 
 - `app.ajrmMarineWeatherDatabase`: `ajrm-marine-weather-database-service-v1`

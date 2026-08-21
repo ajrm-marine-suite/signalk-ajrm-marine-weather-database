@@ -26,7 +26,6 @@ module.exports = function ajrmMarineWeatherDatabase(app) {
 	const plugin = {};
 	const dataDirectory = app.getDataDirPath?.() || path.join(process.cwd(), ".ajrm-weather-database");
 	let running = false, database = null, providers = null, latestProjection = null, latestPosition = null;
-	let initialized = Promise.resolve(0);
 	let unsubscribes = [];
 
 	plugin.id = "signalk-ajrm-marine-weather-database";
@@ -48,8 +47,6 @@ module.exports = function ajrmMarineWeatherDatabase(app) {
 		providers = createProviderRegistry([createOpenMeteoProvider({ enabled:configured.openMeteoEnabled !== false })], priority);
 		database = createWeatherDatabase({ directory:path.join(dataDirectory, "providers"), providers,
 			staleAfterHours:Number(configured.refreshAfterHours) || 1, expiresAfterHours:Number(configured.expiresAfterHours) || 24 });
-		initialized = database.importLegacyOpenMeteo(path.join(path.dirname(dataDirectory), "signalk-ajrm-marine-location-editor", "weather"))
-			.catch((error) => { app.error?.(`[${plugin.id}] legacy weather cache import failed: ${error.message}`); return 0; });
 		const service = Object.freeze({
 			contract:"ajrm-marine-weather-database-service-v1", contractVersion:1,
 			status:(request = {}) => resolve(request), refresh:(request = {}) => resolve({ ...request, force:true }),
@@ -89,7 +86,6 @@ module.exports = function ajrmMarineWeatherDatabase(app) {
 	}
 	function locationsService() { return app.ajrmMarineLocations || globalThis[LOCATION_SYMBOL] || null; }
 	async function resolve(request = {}) {
-		await initialized;
 		let contextLocation = null;
 		if (request.contextLocationId) {
 			contextLocation = await locationsService()?.get?.(String(request.contextLocationId).split("/").at(-1));
@@ -102,7 +98,6 @@ module.exports = function ajrmMarineWeatherDatabase(app) {
 		return result;
 	}
 	async function databaseStatus() {
-		await initialized;
 		const stored = database ? await database.status() : { providers:[], cacheEntries:0 };
 		return { contract:"ajrm-marine-weather-database-status-v1", contractVersion:1, plugin:plugin.id,
 			version:packageJson.version, enabled:running, ...stored, latest:latestProjection ? withoutHourly(latestProjection) : null,

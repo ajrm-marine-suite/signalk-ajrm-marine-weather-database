@@ -63,24 +63,7 @@ function createWeatherDatabase(options) {
 		}
 		return { providers: entries, cacheEntries: entries.reduce((sum, entry) => sum + entry.cacheEntries, 0) };
 	}
-	async function importLegacyOpenMeteo(legacyDirectory) {
-		let names = [];
-		try { names = (await fs.readdir(legacyDirectory)).filter((name) => /^weather-.*\.json$/.test(name)); }
-		catch (error) { if (error.code === "ENOENT") return 0; throw error; }
-		let imported = 0;
-		for (const name of names) {
-			const destination = path.join(directory, "open-meteo", name.replace(/^weather-/, ""));
-			if (await readJson(destination)) continue;
-			const legacy = await readJson(path.join(legacyDirectory, name));
-			if (!legacy?.source?.fetchedAt || !legacy?.hourly) continue;
-			await writeJson(destination, { providerId:"open-meteo", providerName:"Open-Meteo", valid:legacy.valid === true,
-				fetchedAt:legacy.source.fetchedAt, persistent:true, current:legacy.current || null, hourly:legacy.hourly,
-				error:legacy.error || "", fallbackReason:legacy.source.fallbackReason || null });
-			imported += 1;
-		}
-		return imported;
-	}
-	return { resolve, status, importLegacyOpenMeteo };
+	return { resolve, status };
 }
 
 module.exports = { createWeatherDatabase, validPosition };
