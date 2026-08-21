@@ -11,12 +11,21 @@ test("database refreshes providers simultaneously and selects fields explicitly"
 	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "ajrm-weather-db-"));
 	t.after(() => fs.rm(directory, { recursive:true, force:true }));
 	const calls = [];
-	const provider = (id,current,delay) => ({ id,name:id,enabled:true,configured:true,persistentCachePermitted:true,capabilities:[],async fetch(){ calls.push(id); await new Promise((resolve)=>setTimeout(resolve,delay)); return { current,hourly:{ forecast:{ provider:id },marine:null } }; } });
-	const providers = createProviderRegistry([provider("first",{ temperatureC:10,windSpeedMps:null },30),provider("second",{ temperatureC:12,windSpeedMps:4 },30)],["first","second"]);
+	let releaseProviders;
+	let concurrencyTimer;
+	const providersStarted = new Promise((resolve, reject) => {
+		releaseProviders = resolve;
+		concurrencyTimer = setTimeout(() => reject(new Error("providers did not start concurrently")), 1000);
+	});
+	const provider = (id,current) => ({ id,name:id,enabled:true,configured:true,persistentCachePermitted:true,capabilities:[],async fetch(){
+		calls.push(id);
+		if (calls.length === 2) { clearTimeout(concurrencyTimer); releaseProviders(); }
+		await providersStarted;
+		return { current,hourly:{ forecast:{ provider:id },marine:null } };
+	} });
+	const providers = createProviderRegistry([provider("first",{ temperatureC:10,windSpeedMps:null }),provider("second",{ temperatureC:12,windSpeedMps:4 })],["first","second"]);
 	const database = createWeatherDatabase({ directory,providers,staleAfterHours:1,expiresAfterHours:24 });
-	const started=Date.now();
 	const result=await database.resolve({ position:{ latitude:56.2,longitude:-5.6 },now:"2026-08-21T10:00:00.000Z" });
-	assert.ok(Date.now()-started < 58, "providers should run concurrently");
 	assert.deepEqual(calls.sort(),["first","second"]);
 	assert.equal(result.selection.primaryProviderId,"first");
 	assert.equal(result.current.temperatureC,10);

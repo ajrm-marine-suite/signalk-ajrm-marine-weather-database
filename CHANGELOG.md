@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.8 — 2026-08-21
+
+- Make the provider-concurrency test deterministic on slow 32-bit ARM
+  emulation instead of relying on host wall-clock timing.
+
 ## 0.1.7 — 2026-08-21
 
 - Add live search across selectable weather-location names, kinds and

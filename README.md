@@ -46,6 +46,6 @@ payloads are retained as explicit provenance and for current Planning detail vie
 
 ```sh
 cd ~/.signalk
-npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-weather-database.git#v0.1.7 --omit=dev --no-package-lock
+npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-weather-database.git#v0.1.8 --omit=dev --no-package-lock
 sudo systemctl restart signalk
 ```
