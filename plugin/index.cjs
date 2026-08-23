@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { createProviderRegistry } = require("./provider-registry.cjs");
 const { createOpenMeteoProvider } = require("./providers/open-meteo.cjs");
-const { createWeatherDatabase } = require("./database.cjs");
+const { createWeatherDatabase, validPosition } = require("./database.cjs");
 
 const packageJson = require("../package.json");
 const SERVICE_SYMBOL = Symbol.for("mcdonaldajr.ajrmMarineWeatherDatabase");
@@ -34,12 +34,23 @@ const WEATHER_LOCATION_CATEGORIES = Object.freeze([
 ]);
 
 function representativePosition(location) {
+	const direct = validPosition(location?.position);
+	if (direct) return direct;
 	const geometry = location?.feature?.geometry;
-	if (geometry?.type === "Point" && Array.isArray(geometry.coordinates)) return { longitude:Number(geometry.coordinates[0]), latitude:Number(geometry.coordinates[1]) };
+	if (geometry?.type === "Point" && Array.isArray(geometry.coordinates)) return validPosition({ longitude:geometry.coordinates[0], latitude:geometry.coordinates[1] });
 	if (geometry?.type !== "Polygon" || !Array.isArray(geometry.coordinates?.[0]) || !geometry.coordinates[0].length) return null;
-	const points = geometry.coordinates[0];
-	return { longitude:points.reduce((sum, point) => sum + Number(point[0]), 0) / points.length,
-		latitude:points.reduce((sum, point) => sum + Number(point[1]), 0) / points.length };
+	const points = geometry.coordinates[0].map((point) => validPosition({ longitude:point?.[0], latitude:point?.[1] }));
+	if (points.some((point) => !point)) return null;
+	return validPosition({ longitude:points.reduce((sum, point) => sum + point.longitude, 0) / points.length,
+		latitude:points.reduce((sum, point) => sum + point.latitude, 0) / points.length });
+}
+function distanceMetres(left, right) {
+	const earthRadiusMetres = 6371000;
+	const latitude1 = left.latitude * Math.PI / 180, latitude2 = right.latitude * Math.PI / 180;
+	const deltaLatitude = (right.latitude - left.latitude) * Math.PI / 180;
+	const deltaLongitude = (right.longitude - left.longitude) * Math.PI / 180;
+	const haversine = Math.sin(deltaLatitude / 2) ** 2 + Math.cos(latitude1) * Math.cos(latitude2) * Math.sin(deltaLongitude / 2) ** 2;
+	return Math.round(earthRadiusMetres * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine)));
 }
 
 module.exports = function ajrmMarineWeatherDatabase(app) {
@@ -70,6 +81,7 @@ module.exports = function ajrmMarineWeatherDatabase(app) {
 		const service = Object.freeze({
 			contract:"ajrm-marine-weather-database-service-v1", contractVersion:1,
 			status:(request = {}) => resolve(request), refresh:(request = {}) => resolve({ ...request, force:true }),
+			resolveNearest:(request = {}) => resolveNearest(request),
 			databaseStatus:() => databaseStatus(), listProviders:() => providers.list(),
 			listLocations:() => weatherLocations(),
 		});
@@ -107,6 +119,7 @@ module.exports = function ajrmMarineWeatherDatabase(app) {
 		router.get("/providers", (_req,res) => res.json(providers?.list?.() || []));
 		router.get("/locations", async (_req,res) => res.json(await weatherLocations()));
 		router.get("/weather/status", async (req,res) => sendProjection(res, weatherRequest(req), false));
+		router.get("/weather/nearest", async (req,res) => sendNearestProjection(res, weatherRequest(req)));
 		router.post("/weather/refresh", write(async (req,res) => sendProjection(res, weatherRequest(req), true)));
 	};
 
@@ -114,34 +127,86 @@ module.exports = function ajrmMarineWeatherDatabase(app) {
 		try { res.json(await resolve(force ? { ...request, force:true } : request)); }
 		catch (error) { res.status(400).json({ error:error.message }); }
 	}
+	async function sendNearestProjection(res, request) {
+		try { res.json(await resolveNearest(request)); }
+		catch (error) { res.status(400).json({ error:error.message }); }
+	}
 	function locationsService() { return app.ajrmMarineLocations || globalThis[LOCATION_SYMBOL] || null; }
 	function weatherLocationCategory(location) {
 		return WEATHER_LOCATION_CATEGORIES.find(([type]) => location?.types?.includes(type))?.[1] || "Weather location";
+	}
+	function weatherLocationSummary(location) {
+		return { id:location.id || null, name:location.name || "", description:location.description || "",
+			types:(location.types || []).filter((type) => WEATHER_LOCATION_TYPES.has(type)),
+			category:location.category || weatherLocationCategory(location), position:representativePosition(location), revision:location.revision || null };
 	}
 	async function weatherLocations() {
 		const locations = await locationsService()?.list?.() || [];
 		return locations
 			.filter((location) => location?.types?.some((type) => WEATHER_LOCATION_TYPES.has(type)))
-			.map((location) => ({
-				id:location.id,
-				name:location.name,
-				description:location.description || "",
-				types:location.types.filter((type) => WEATHER_LOCATION_TYPES.has(type)),
-				category:weatherLocationCategory(location),
-				position:representativePosition(location),
-				revision:location.revision || null,
-			}))
+			.map(weatherLocationSummary)
 			.filter((location) => Number.isFinite(location.position?.latitude) && Number.isFinite(location.position?.longitude))
 			.sort((left,right) => left.category.localeCompare(right.category) || left.name.localeCompare(right.name));
 	}
 	async function resolve(request = {}) {
 		let contextLocation = null;
 		if (request.contextLocationId) {
-			contextLocation = await locationsService()?.get?.(String(request.contextLocationId).split("/").at(-1));
-			if (!contextLocation) throw new Error("Weather context location was not found.");
+			const storedLocation = await locationsService()?.get?.(String(request.contextLocationId).split("/").at(-1));
+			if (!storedLocation) throw new Error("Weather context location was not found.");
+			contextLocation = weatherLocationSummary(storedLocation);
 		}
 		const result = await database.resolve({ ...request, contextLocation,
 			position:request.position || representativePosition(contextLocation) || latestPosition });
+		return publishProjection(result);
+	}
+	async function resolveNearest(request = {}) {
+		const requestedPosition = validPosition(request.position);
+		if (!requestedPosition) throw new Error("A valid current vessel latitude and longitude are required.");
+		const locations = await weatherLocations();
+		const selected = nearestLocation(locations, requestedPosition);
+		const unavailableReason = selected ? null : "No eligible weather locations are available from Locations.";
+		const attempted = selected
+			? await database.resolve({ ...request, position:selected.position, contextLocation:selected })
+			: await database.resolve({ ...request, position:null, contextLocation:null });
+		if (attempted.valid) {
+			const fallbackSources = attempted.sources.filter((source) => source.valid && source.cache === "fallback");
+			return publishProjection({ ...attempted, locationResolution:locationResolution({ requestedPosition,
+				selectedLocation:selected, mode:"nearest-location", cacheFallback:fallbackSources.length > 0,
+				fallbackReason:fallbackSources.map((source) => source.fallbackReason).filter(Boolean).join("; ") || null }) });
+		}
+		const fallbackReason = unavailableReason || attempted.error || "The nearest weather location did not return a usable forecast.";
+		const cached = await database.nearestCached({ ...request, position:requestedPosition, fallbackReason });
+		if (cached.valid) {
+			const cachedLocation = cachedLocationSummary(cached, locations);
+			return publishProjection({ ...cached, locationResolution:locationResolution({ requestedPosition,
+				selectedLocation:cachedLocation, mode:"nearest-cached-location", cacheFallback:true, fallbackReason }) });
+		}
+		return publishProjection({ ...attempted, locationResolution:locationResolution({ requestedPosition,
+			selectedLocation:selected, mode:"unavailable", cacheFallback:false, fallbackReason }) });
+	}
+	function nearestLocation(locations, position) {
+		return [...locations].sort((left,right) => distanceMetres(position, left.position) - distanceMetres(position, right.position)
+			|| left.name.localeCompare(right.name) || String(left.id).localeCompare(String(right.id)))[0] || null;
+	}
+	function cachedLocationSummary(projection, locations) {
+		const position = validPosition(projection.position);
+		const context = projection.contextLocation;
+		if (context?.name && position) return { id:context.id || null, name:context.name, types:context.types || [],
+			category:context.category || "Weather location", position };
+		const matching = position ? nearestLocation(locations, position) : null;
+		if (matching && distanceMetres(position, matching.position) <= 100) return matching;
+		return position ? { id:null, name:`Cached weather at ${position.latitude.toFixed(4)}, ${position.longitude.toFixed(4)}`,
+			types:[], category:"Cached forecast", position } : null;
+	}
+	function locationResolution({ requestedPosition, selectedLocation, mode, cacheFallback, fallbackReason }) {
+		const selectedPosition = validPosition(selectedLocation?.position);
+		return { contract:"ajrm-marine-weather-location-resolution-v1", contractVersion:1, requestedPosition,
+			selectedLocation:selectedLocation && selectedPosition ? { id:selectedLocation.id || null, name:selectedLocation.name || "Weather location",
+				types:selectedLocation.types || [], category:selectedLocation.category || "Weather location", position:selectedPosition } : null,
+			distanceMetres:selectedPosition ? distanceMetres(requestedPosition, selectedPosition) : null,
+			mode, cacheFallback:cacheFallback === true, fallbackReason:fallbackReason || null };
+	}
+	function publishProjection(result) {
 		latestProjection = result;
 		publish(WEATHER_PATH, withoutHourly(result));
 		return result;
@@ -157,7 +222,8 @@ module.exports = function ajrmMarineWeatherDatabase(app) {
 	}
 	function weatherRequest(req) {
 		const values = req.method === "POST" ? req.body || {} : req.query || {};
-		const latitude = Number(values.latitude), longitude = Number(values.longitude);
+		const latitude = values.latitude == null || values.latitude === "" ? NaN : Number(values.latitude);
+		const longitude = values.longitude == null || values.longitude === "" ? NaN : Number(values.longitude);
 		return { contextLocationId:values.locationId || values.contextLocationId || undefined,
 			position:Number.isFinite(latitude) && Number.isFinite(longitude) ? { latitude,longitude } : undefined,
 			weatherDays:values.weatherDays, marineDays:values.marineDays };

@@ -6,3 +6,13 @@ test("Open-Meteo adapter normalizes wind and direction",async()=>{
 	const value=await createOpenMeteoProvider({fetchFn}).fetch({position:{latitude:56,longitude:-5},weatherDays:7,marineDays:7,now:"2026-08-21T12:01:00Z"});
 	assert.ok(Math.abs(value.current.windSpeedMps-5.14444)<1e-9); assert.ok(Math.abs(value.current.windDirectionTrueRad-Math.PI/2)<1e-9);
 });
+
+test("Open-Meteo adapter bounds a blackholed fetch and aborts both requests",async()=>{
+	const signals=[];
+	const fetchFn=async(_url,options)=>{signals.push(options.signal);return new Promise(()=>{});};
+	const provider=createOpenMeteoProvider({fetchFn,timeoutMs:10});
+	await assert.rejects(provider.fetch({position:{latitude:56,longitude:-5},weatherDays:7,marineDays:7,now:"2026-08-23T12:00:00Z"}),
+		/timed out after 10 ms/);
+	assert.equal(signals.length,2);
+	assert.ok(signals.every((signal)=>signal instanceof AbortSignal && signal.aborted));
+});

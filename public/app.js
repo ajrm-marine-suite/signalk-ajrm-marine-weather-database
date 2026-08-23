@@ -1,7 +1,7 @@
 /** Weather Database webapp: provider status plus named, cached forecast inspection. */
 
-import { renderForecastTable } from "./weather-forecast-view.mjs?v=0.1.8";
-import { filterWeatherLocations } from "./weather-location-search.mjs?v=0.1.8";
+import { renderForecastTable } from "./weather-forecast-view.mjs?v=0.1.9";
+import { filterWeatherLocations } from "./weather-location-search.mjs?v=0.1.9";
 
 const apiBase = "/plugins/signalk-ajrm-marine-weather-database";
 const selectedLocationKey = "ajrmMarineWeatherDatabaseSelectedLocation";

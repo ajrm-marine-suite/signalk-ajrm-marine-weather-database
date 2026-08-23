@@ -27,15 +27,34 @@ This makes later provider additions additive rather than a replacement for Open-
 
 ## Offline operation
 
-Provider records are stored separately on disk. Fresh cache entries avoid a network call. If refresh fails, a non-expired entry is returned as an explicit offline fallback with the failure reason. Expired data remain visible in database diagnostics but are not presented as a valid forecast.
+Provider records are stored separately on disk. Fresh cache entries avoid a network call. Open-Meteo's combined weather/marine request has a 15-second deadline, including response-body parsing, so a blackholed connection cannot prevent fallback. If refresh fails or times out, a non-expired entry is returned as an explicit offline fallback with the failure reason. Expired data remain visible in database diagnostics but are not presented as a valid forecast.
+
+Display can request weather for a resolved fresh or last-known vessel position through
+`GET /weather/nearest?latitude=…&longitude=…`. Weather Database selects the
+nearest eligible Locations record independently of any tide or tidal-gate
+selection. The projection includes `locationResolution`, which identifies the
+requested position, selected weather location and position, distance in metres,
+selection mode and any cache fallback reason.
+
+Nearest-location resolution keeps the requested place authoritative in this
+fixed order: reuse a recent exact-location cache; otherwise ask the provider;
+use a still-valid older exact-location cache if that attempt fails; and only
+then select the nearest different non-expired cached coordinate group. Provider
+priority is preserved within that one group and provider records from different
+locations are never combined. New cache records retain the request position and
+a non-authoritative snapshot of the Locations context for offline
+identification, while legacy coordinate filenames remain usable for fallback
+selection.
 
 ## Signal K contracts
 
-- `app.ajrmMarineWeatherDatabase`: `ajrm-marine-weather-database-service-v1`
+- `app.ajrmMarineWeatherDatabase`: `ajrm-marine-weather-database-service-v1`,
+  including the additive `resolveNearest(request)` operation
 - selectable forecast locations: Location Editor records classified as
   `weatherForecastLocation`, `harbour`, `marina`, `anchorage`, `mooring`,
   `tidalStandardPort`, `tidalSecondaryPort` or `tidalGate`
 - projection: `ajrm-marine-weather-projection-v2`
+- nearest-location metadata: `ajrm-marine-weather-location-resolution-v1`
 - diagnostics: `app.ajrmMarineWeatherDiagnostics`
 - compact Signal K path: `plugins.ajrmMarineWeatherDatabase.weather`
 
@@ -46,6 +65,6 @@ payloads are retained as explicit provenance and for current Planning detail vie
 
 ```sh
 cd ~/.signalk
-npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-weather-database.git#v0.1.8 --omit=dev --no-package-lock
+npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-weather-database.git#v0.1.9 --omit=dev --no-package-lock
 sudo systemctl restart signalk
 ```

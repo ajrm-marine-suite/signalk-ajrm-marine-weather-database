@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.9 — 2026-08-23
+
+- Add nearest-weather resolution for a vessel position independently of tidal
+  selection, with explicit selected Location, distance and cache-fallback
+  metadata for Display.
+- Preserve exact-location priority: reuse a recent cache, otherwise try the
+  provider, then use an older exact cache on failure, and only then select a
+  different nearest non-expired cached location.
+- Keep provider data from different cached coordinates separate, retain
+  non-authoritative Location context for offline identification, validate cache
+  coordinates strictly and resolve nearest caches correctly across the date
+  line.
+- Bound each combined Open-Meteo weather/marine request to 15 seconds so a
+  blackholed connection reaches the exact- or nearest-cache fallback path.
+
 ## 0.1.8 — 2026-08-21
 
 - Make the provider-concurrency test deterministic on slow 32-bit ARM

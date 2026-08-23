@@ -1,5 +1,7 @@
 /** Open-Meteo adapter. Fetches atmospheric and marine forecasts and normalizes current values to Signal K SI units. */
 
+const DEFAULT_REQUEST_TIMEOUT_MS = 15000;
+
 function valueAt(hourly, key, index) {
 	const value = Number(hourly?.[key]?.[index]);
 	return Number.isFinite(value) ? value : null;
@@ -38,14 +40,29 @@ function currentSummary(forecast, marine, now) {
 	};
 }
 
-async function responseJson(fetchFn, url, label) {
-	const response = await fetchFn(url);
+async function responseJson(fetchFn, url, label, signal) {
+	const response = await fetchFn(url, { signal });
 	if (!response.ok) throw new Error(`${label} returned ${response.status} ${response.statusText}.`);
 	return response.json();
 }
 
+async function boundedProviderRequest(task, timeoutMs) {
+	const controller = new AbortController();
+	let timer = null;
+	const timeout = new Promise((_resolve, reject) => {
+		timer = setTimeout(() => {
+			reject(new Error(`Open-Meteo provider request timed out after ${timeoutMs} ms.`));
+			controller.abort();
+		}, timeoutMs);
+	});
+	try { return await Promise.race([Promise.resolve().then(() => task(controller.signal)), timeout]); }
+	finally { clearTimeout(timer); controller.abort(); }
+}
+
 function createOpenMeteoProvider(options = {}) {
 	const fetchFn = options.fetchFn || globalThis.fetch;
+	const configuredTimeout = Number(options.timeoutMs);
+	const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? Math.max(1, Math.round(configuredTimeout)) : DEFAULT_REQUEST_TIMEOUT_MS;
 	return Object.freeze({
 		id: "open-meteo", name: "Open-Meteo", enabled: options.enabled !== false,
 		configured: typeof fetchFn === "function", persistentCachePermitted: true,
@@ -64,11 +81,13 @@ function createOpenMeteoProvider(options = {}) {
 				hourly: "wave_height,wave_period,wave_direction,swell_wave_height,swell_wave_period,swell_wave_direction",
 				forecast_days: String(marineDays), timezone: "GMT",
 			});
-			const [forecast, marine] = await Promise.all([
-				responseJson(fetchFn, forecastUrl, "Open-Meteo weather"),
-				responseJson(fetchFn, marineUrl, "Open-Meteo marine"),
-			]);
-			return { current: currentSummary(forecast, marine, now), hourly: { forecast, marine } };
+			return boundedProviderRequest(async (signal) => {
+				const [forecast, marine] = await Promise.all([
+					responseJson(fetchFn, forecastUrl, "Open-Meteo weather", signal),
+					responseJson(fetchFn, marineUrl, "Open-Meteo marine", signal),
+				]);
+				return { current: currentSummary(forecast, marine, now), hourly: { forecast, marine } };
+			}, timeoutMs);
 		},
 	});
 }

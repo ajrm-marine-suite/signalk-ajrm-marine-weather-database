@@ -30,3 +30,84 @@ test("plugin registers standalone weather service and retracts it on stop",async
 	assert.ok(messages.some((message)=>message.updates?.some((update)=>update.values?.some((value)=>value.path==="plugins.ajrmMarineWeatherDatabase"))));
 });
 test("appIcon exists at package root and served public path",()=>{const packageJson=require("../package.json"); assert.equal(packageJson.signalk.appIcon,"./icon-120.png"); for(const file of ["../icon-120.png","../public/icon-120.png"]) assert.ok(fs.statSync(path.join(__dirname,file)).size>100);});
+
+test("weather locations reject invalid geometry and do not let blank direct positions override valid features",async(t)=>{
+	const directory=await fsp.mkdtemp(path.join(os.tmpdir(),"ajrm-weather-position-plugin-")); t.after(()=>fsp.rm(directory,{recursive:true,force:true}));
+	const validFeature={id:"valid-feature",name:"Valid feature",types:["harbour"],position:{latitude:null,longitude:" "},feature:{geometry:{type:"Point",coordinates:[-5.63,56.27]}}};
+	const invalidFeature={id:"invalid-feature",name:"Invalid feature",types:["marina"],feature:{geometry:{type:"Point",coordinates:[200,95]}}};
+	const app={getDataDirPath:()=>directory,setPluginStatus(){},handleMessage(){},subscriptionmanager:{subscribe(){}},ajrmMarineLocations:{async list(){return[validFeature,invalidFeature];}}};
+	const plugin=createPlugin(app); plugin.start({openMeteoEnabled:false}); t.after(()=>plugin.stop());
+	const locations=await app.ajrmMarineWeatherDatabase.listLocations();
+	assert.equal(locations.length,1);
+	assert.equal(locations[0].id,"valid-feature");
+	assert.deepEqual(locations[0].position,{latitude:56.27,longitude:-5.63});
+});
+
+test("nearest weather contract resolves a Locations point then falls back to one nearest cached point",async(t)=>{
+	const directory=await fsp.mkdtemp(path.join(os.tmpdir(),"ajrm-weather-nearest-plugin-")); t.after(()=>fsp.rm(directory,{recursive:true,force:true}));
+	const originalFetch=globalThis.fetch; let fetchMode="fail", fetchCalls=0, providerStartedResolve=()=>{}, pendingRejects=[];
+	globalThis.fetch=async()=>{fetchCalls+=1;if(fetchMode==="pending")return new Promise((_resolve,reject)=>{pendingRejects.push(reject);if(pendingRejects.length===2)providerStartedResolve();});throw new Error("Pi offline");};
+	t.after(()=>{globalThis.fetch=originalFetch;});
+	const nearest={id:"nearest",name:"Nearest harbour",description:"Nearest named point",types:["harbour"],revision:1,feature:{geometry:{type:"Point",coordinates:[-5.63,56.27]}}};
+	const cached={id:"cached",name:"Cached marina",description:"Cached named point",types:["marina"],revision:1,feature:{geometry:{type:"Point",coordinates:[-5.3,56.5]}}};
+	const app={getDataDirPath:()=>directory,setPluginStatus(){},handleMessage(){},subscriptionmanager:{subscribe(){}},
+		ajrmMarineLocations:{contract:"ajrm-marine-locations-service-v1",async list(){return[nearest,cached];},async get(id){return[nearest,cached].find((location)=>location.id===id)||null;}}};
+	const plugin=createPlugin(app); plugin.start({openMeteoEnabled:true}); t.after(()=>plugin.stop());
+	assert.equal(app.ajrmMarineWeatherDatabase.contract,"ajrm-marine-weather-database-service-v1");
+	assert.equal(app.ajrmMarineWeatherDatabase.contractVersion,1);
+	assert.equal(typeof app.ajrmMarineWeatherDatabase.resolveNearest,"function");
+	const providerDirectory=path.join(directory,"providers","open-meteo"); await fsp.mkdir(providerDirectory,{recursive:true});
+	const weatherRecord=(position,contextLocation)=>({providerId:"open-meteo",providerName:"Open-Meteo",valid:true,fetchedAt:new Date().toISOString(),persistent:true,
+		cacheContext:{contract:"ajrm-marine-weather-cache-context-v1",position,weatherDays:16,marineDays:8,contextLocation},
+		current:{temperatureC:10,windSpeedMps:4},hourly:{forecast:{hourly:{time:["2026-08-23T10:00"]}},marine:null},error:"",fallbackReason:null});
+	const nearestPosition={latitude:56.27,longitude:-5.63};
+	const nearestFile=path.join(providerDirectory,"56.2700_-5.6300_16_8.json");
+	await fsp.writeFile(nearestFile,JSON.stringify(weatherRecord(nearestPosition,{id:"nearest",name:"Nearest harbour",types:["harbour"],category:"Harbour",position:nearestPosition})));
+	const requested={latitude:56.271,longitude:-5.631};
+	const direct=await app.ajrmMarineWeatherDatabase.resolveNearest({position:requested,weatherDays:16,marineDays:8});
+	assert.equal(direct.valid,true);
+	assert.equal(direct.locationResolution.contract,"ajrm-marine-weather-location-resolution-v1");
+	assert.equal(direct.locationResolution.contractVersion,1);
+	assert.equal(direct.locationResolution.mode,"nearest-location");
+	assert.equal(direct.locationResolution.selectedLocation.name,"Nearest harbour");
+	assert.equal(direct.locationResolution.cacheFallback,false);
+	assert.ok(direct.locationResolution.distanceMetres>0);
+	assert.equal(fetchCalls,0,"a recent exact-location cache must avoid provider access");
+
+	await fsp.rm(nearestFile);
+	const cachedPosition={latitude:56.5,longitude:-5.3};
+	await fsp.writeFile(path.join(providerDirectory,"56.5000_-5.3000_16_8.json"),JSON.stringify(weatherRecord(cachedPosition,{id:"cached",name:"Cached marina",types:["marina"],category:"Marina",position:cachedPosition})));
+	fetchMode="pending"; pendingRejects=[];
+	const providerStarted=new Promise((resolve)=>{providerStartedResolve=resolve;});
+	let fallbackSettled=false;
+	const fallbackPromise=app.ajrmMarineWeatherDatabase.resolveNearest({position:requested,weatherDays:16,marineDays:8});
+	fallbackPromise.then(()=>{fallbackSettled=true;},()=>{fallbackSettled=true;});
+	let providerStartTimer;
+	try{await Promise.race([providerStarted,new Promise((_resolve,reject)=>{providerStartTimer=setTimeout(()=>reject(new Error("provider calls did not start")),1000);})]);}
+	finally{clearTimeout(providerStartTimer);}
+	await new Promise((resolve)=>setImmediate(resolve));
+	assert.equal(fallbackSettled,false,"a different cached point must not be selected while the provider attempt is pending");
+	for(const reject of pendingRejects)reject(new Error("Pi offline"));
+	const fallback=await fallbackPromise;
+	assert.equal(fetchCalls,2,"both provider requests must be attempted before alternate-cache selection");
+	assert.equal(fallback.valid,true);
+	assert.equal(fallback.locationResolution.mode,"nearest-cached-location");
+	assert.equal(fallback.locationResolution.selectedLocation.name,"Cached marina");
+	assert.deepEqual(fallback.locationResolution.selectedLocation.position,cachedPosition);
+	assert.equal(fallback.locationResolution.cacheFallback,true);
+	assert.match(fallback.locationResolution.fallbackReason,/Pi offline/);
+	assert.ok(fallback.locationResolution.distanceMetres>1000);
+	assert.equal(fallback.source.cache,"nearest-fallback");
+	assert.equal(fallback.hourly.forecast.hourly.time.length,1);
+
+	fetchMode="fail";
+	const routes=new Map(); const router={get(route,handler){routes.set(`GET ${route}`,handler);},post(route,handler){routes.set(`POST ${route}`,handler);}}; plugin.registerWithRouter(router);
+	assert.equal(typeof routes.get("GET /weather/nearest"),"function");
+	const response={statusCode:200,status(code){this.statusCode=code;return this;},json(value){this.body=value;return this;}};
+	await routes.get("GET /weather/nearest")({method:"GET",query:{latitude:String(requested.latitude),longitude:String(requested.longitude),weatherDays:"16",marineDays:"8"}},response);
+	assert.equal(response.statusCode,200); assert.equal(response.body.locationResolution.mode,"nearest-cached-location");
+	const invalidResponse={statusCode:200,status(code){this.statusCode=code;return this;},json(value){this.body=value;return this;}};
+	await routes.get("GET /weather/nearest")({method:"GET",query:{}},invalidResponse);
+	assert.equal(invalidResponse.statusCode,400); assert.match(invalidResponse.body.error,/latitude and longitude/);
+	assert.ok(plugin.getOpenApi().paths["/weather/nearest"]);
+});

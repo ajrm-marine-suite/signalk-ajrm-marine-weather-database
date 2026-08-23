@@ -1,11 +1,41 @@
 {
   "openapi":"3.0.3",
-  "info":{"title":"AJRM Marine Weather Database API","version":"0.1.8"},
+  "info":{"title":"AJRM Marine Weather Database API","version":"0.1.9"},
   "paths":{
     "/status":{"get":{"responses":{"200":{"description":"Provider and cache status"}}}},
     "/providers":{"get":{"responses":{"200":{"description":"Configured providers in selection priority order"}}}},
 		"/locations":{"get":{"responses":{"200":{"description":"Forecast points, ports, marinas, anchorages, moorings and tidal gates supplied by Location Editor"}}}},
     "/weather/status":{"get":{"responses":{"200":{"description":"Cached multi-provider weather projection"}}}},
+		"/weather/nearest":{"get":{
+			"summary":"Resolve weather for the nearest eligible Locations point",
+			"description":"Uses the supplied vessel position to choose the nearest eligible Locations record independently of tidal selection. Resolution order is a recent exact-location cache, a provider attempt, a usable older exact-location cache after provider failure, then a different nearest non-expired cached coordinate group. Provider records from different locations are never mixed.",
+			"parameters":[
+				{"name":"latitude","in":"query","required":true,"schema":{"type":"number","minimum":-90,"maximum":90}},
+				{"name":"longitude","in":"query","required":true,"schema":{"type":"number","minimum":-180,"maximum":180}},
+				{"name":"weatherDays","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":16,"default":16}},
+				{"name":"marineDays","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":8,"default":8}}
+			],
+			"responses":{
+				"200":{"description":"Weather projection with explicit nearest-location or nearest-cached-location resolution metadata","content":{"application/json":{"schema":{"type":"object","required":["contract","valid","locationResolution"],"properties":{"contract":{"type":"string","enum":["ajrm-marine-weather-projection-v2"]},"valid":{"type":"boolean"},"locationResolution":{"$ref":"#/components/schemas/LocationResolution"}}}}}},
+				"400":{"description":"The current vessel position is missing or invalid"}
+			}
+		}},
     "/weather/refresh":{"post":{"responses":{"200":{"description":"Refresh all enabled providers concurrently"}}}}
-  }
-}
+	},
+	"components":{"schemas":{"LocationResolution":{
+		"type":"object",
+		"required":["contract","contractVersion","requestedPosition","selectedLocation","distanceMetres","mode","cacheFallback","fallbackReason"],
+		"properties":{
+			"contract":{"type":"string","enum":["ajrm-marine-weather-location-resolution-v1"]},
+			"contractVersion":{"type":"integer","enum":[1]},
+			"requestedPosition":{"$ref":"#/components/schemas/Position"},
+			"selectedLocation":{"nullable":true,"allOf":[{"$ref":"#/components/schemas/SelectedLocation"}]},
+			"distanceMetres":{"type":"integer","minimum":0,"nullable":true},
+			"mode":{"type":"string","enum":["nearest-location","nearest-cached-location","unavailable"]},
+			"cacheFallback":{"type":"boolean"},
+			"fallbackReason":{"type":"string","nullable":true}
+		}
+	},"Position":{"type":"object","required":["latitude","longitude"],"properties":{"latitude":{"type":"number"},"longitude":{"type":"number"}}},
+	"SelectedLocation":{"type":"object","required":["id","name","types","category","position"],"properties":{"id":{"type":"string","nullable":true},"name":{"type":"string"},"types":{"type":"array","items":{"type":"string"}},"category":{"type":"string"},"position":{"$ref":"#/components/schemas/Position"}}}
+	}}
+	  }
