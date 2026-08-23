@@ -1,6 +1,6 @@
 {
   "openapi":"3.0.3",
-  "info":{"title":"AJRM Marine Weather Database API","version":"0.1.9"},
+  "info":{"title":"AJRM Marine Weather Database API","version":"0.1.10"},
   "paths":{
     "/status":{"get":{"responses":{"200":{"description":"Provider and cache status"}}}},
     "/providers":{"get":{"responses":{"200":{"description":"Configured providers in selection priority order"}}}},
@@ -20,9 +20,15 @@
 				"400":{"description":"The current vessel position is missing or invalid"}
 			}
 		}},
-    "/weather/refresh":{"post":{"responses":{"200":{"description":"Refresh all enabled providers concurrently"}}}}
-	},
-	"components":{"schemas":{"LocationResolution":{
+	    "/weather/refresh":{"post":{
+			"summary":"Force a provider refresh for one position or Locations record",
+			"security":[{"signalk":[]}],
+			"x-signalk-access":"readwrite",
+			"requestBody":{"required":false,"content":{"application/json":{"schema":{"type":"object","properties":{"locationId":{"type":"string"},"latitude":{"type":"number","minimum":-90,"maximum":90},"longitude":{"type":"number","minimum":-180,"maximum":180},"weatherDays":{"type":"integer","minimum":1,"maximum":16},"marineDays":{"type":"integer","minimum":1,"maximum":8}}}}}},
+			"responses":{"200":{"description":"Refresh all enabled providers concurrently"},"400":{"description":"The requested position, location or provider refresh input is invalid","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorResponse"}}}},"403":{"description":"Signal K read/write or admin access is required"}}
+		}}
+		},
+		"components":{"securitySchemes":{"signalk":{"type":"http","scheme":"bearer"}},"schemas":{"LocationResolution":{
 		"type":"object",
 		"required":["contract","contractVersion","requestedPosition","selectedLocation","distanceMetres","mode","cacheFallback","fallbackReason"],
 		"properties":{
@@ -35,7 +41,8 @@
 			"cacheFallback":{"type":"boolean"},
 			"fallbackReason":{"type":"string","nullable":true}
 		}
-	},"Position":{"type":"object","required":["latitude","longitude"],"properties":{"latitude":{"type":"number"},"longitude":{"type":"number"}}},
+	},"ErrorResponse":{"type":"object","required":["error"],"properties":{"error":{"type":"string"}}},
+	"Position":{"type":"object","required":["latitude","longitude"],"properties":{"latitude":{"type":"number"},"longitude":{"type":"number"}}},
 	"SelectedLocation":{"type":"object","required":["id","name","types","category","position"],"properties":{"id":{"type":"string","nullable":true},"name":{"type":"string"},"types":{"type":"array","items":{"type":"string"}},"category":{"type":"string"},"position":{"$ref":"#/components/schemas/Position"}}}
 	}}
 	  }

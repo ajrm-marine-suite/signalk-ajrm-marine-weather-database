@@ -2,6 +2,12 @@
 
 A standalone Signal K weather database for AJRM Marine Suite. It owns network-provider access, durable offline caches, freshness, provenance and forecast selection. Location Editor remains the spatial catalogue; Display and Marine Planning consume this service.
 
+Version `0.1.10` serializes concurrent refreshes for the same provider/cache
+key, uses collision-safe atomic cache writes, and enforces Signal K read/write
+or admin access for forced refreshes. Nearest-location metadata now describes
+the selected primary forecast: a cached secondary field fallback no longer
+mislabels a live primary hourly forecast as wholly cached.
+
 The webapp lists dedicated forecast points plus every harbour, marina,
 anchorage, mooring, tidal gate, standard tidal port and secondary tidal port held by
 Location Editor. The selector groups them by kind so similarly named records
@@ -23,11 +29,21 @@ The first adapter is Open-Meteo, covering atmospheric and marine hourly forecast
 5. records the selected provider for every field; and
 6. never silently averages forecasts.
 
+Whole-forecast cache provenance follows the selected primary hourly provider.
+A secondary provider may supply an explicitly recorded missing current field,
+but its cached state does not turn a live primary forecast into a cached
+forecast in consumer wording.
+
 This makes later provider additions additive rather than a replacement for Open-Meteo. A future consensus/ensemble policy can be added as a named policy without changing stored provider records.
 
 ## Offline operation
 
 Provider records are stored separately on disk. Fresh cache entries avoid a network call. Open-Meteo's combined weather/marine request has a 15-second deadline, including response-body parsing, so a blackholed connection cannot prevent fallback. If refresh fails or times out, a non-expired entry is returned as an explicit offline fallback with the failure reason. Expired data remain visible in database diagnostics but are not presented as a valid forecast.
+
+Requests for the same provider and rounded coordinate/horizon cache key share
+one in-flight refresh. Persistent writes use a unique temporary file followed
+by atomic replacement, so overlapping browser clients cannot make an otherwise
+successful provider result fail during cache rename.
 
 Display can request weather for a resolved fresh or last-known vessel position through
 `GET /weather/nearest?latitude=…&longitude=…`. Weather Database selects the
@@ -58,6 +74,11 @@ selection.
 - diagnostics: `app.ajrmMarineWeatherDiagnostics`
 - compact Signal K path: `plugins.ajrmMarineWeatherDatabase.weather`
 
+`POST /weather/refresh` forces provider and persistent-cache mutation and
+therefore requires an authenticated Signal K principal with `readwrite` or
+`admin` permission. Read-only status, location and nearest-weather routes remain
+available to normal Signal K webapp clients.
+
 Forecast speeds and angles use Signal K SI units. Provider-native hourly
 payloads are retained as explicit provenance and for current Planning detail views.
 
@@ -65,6 +86,45 @@ payloads are retained as explicit provenance and for current Planning detail vie
 
 ```sh
 cd ~/.signalk
-npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-weather-database.git#v0.1.9 --omit=dev --no-package-lock
+npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-weather-database.git#v0.1.10 --omit=dev --no-package-lock
 sudo systemctl restart signalk
 ```
+
+Open **Webapps → AJRM Marine Weather Database** and hard-refresh after
+upgrading.
+
+## Development
+
+```sh
+npm install
+npm test
+npm pack --dry-run
+```
+
+## Attribution
+
+AJRM Marine Weather Database is authored and maintained by Anthony McDonald,
+with assistance from William McAusland. It builds on the Signal K project and
+the work of Signal K plugin authors. Open-Meteo supplies the initial atmospheric
+and marine provider data under its published terms and attribution requirements.
+
+## License and commercial use
+
+This software is licensed under the GNU Affero General Public License v3.0 or
+later (AGPL-3.0-or-later). You may use, study, share, and modify it under that
+licence. If you modify it and make it available to users over a network, the
+corresponding source code must also be made available under the AGPL.
+
+Commercial licensing is available by arrangement for organisations that want
+different terms.
+
+## Alpha safety disclaimer
+
+> This software is Alpha Release and has not been tested in live environments and must not be relied upon for navigation or safety. The Authors do not accept any responsibility for loss or damage as a result of using this software.
+
+## Alpha Release
+
+Provider-neutral weather and marine forecast caching for the AJRM Marine Suite.
+
+Development assistance: OpenAI Codex helped with code generation, refactoring,
+and automated testing during the alpha development cycle.

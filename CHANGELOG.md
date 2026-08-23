@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.10 — 2026-08-23
+
+- Coalesce concurrent refreshes for the same provider/cache key and use unique
+  atomic temporary files so overlapping clients cannot race cache replacement.
+- Register Signal K read routes through the read-only access router and forced
+  refresh through the read/write router, retain a compatibility fallback, and
+  enforce read/write or admin access again in the handler guard.
+- Base nearest-weather cache fallback metadata on the selected primary hourly
+  provider, avoiding a false whole-forecast cached warning when only a
+  secondary field provider used cached data.
+- Add webapp help and Alpha safety guidance plus complete public attribution,
+  licensing, development and installation documentation.
+
 ## 0.1.9 — 2026-08-23
 
 - Add nearest-weather resolution for a vessel position independently of tidal

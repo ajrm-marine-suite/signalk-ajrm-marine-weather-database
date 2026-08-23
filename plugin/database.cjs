@@ -1,5 +1,6 @@
 /** Durable provider-separated weather cache. Refreshes all enabled providers concurrently and retains offline fallbacks independently. */
 
+const { randomUUID } = require("node:crypto");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { aggregateProviderResults } = require("./aggregation.cjs");
@@ -23,7 +24,16 @@ function requestDays(input = {}) {
 		marineDays: Math.max(1, Math.min(8, Math.round(Number(input.marineDays) || 8))) };
 }
 async function readJson(file) { try { return JSON.parse(await fs.readFile(file, "utf8")); } catch (error) { if (error.code === "ENOENT") return null; throw error; } }
-async function writeJson(file, value) { await fs.mkdir(path.dirname(file), { recursive: true }); const temporary = `${file}.${process.pid}.tmp`; await fs.writeFile(temporary, `${JSON.stringify(value)}\n`, { mode: 0o600 }); await fs.rename(temporary, file); }
+async function writeJson(file, value) {
+	await fs.mkdir(path.dirname(file), { recursive: true });
+	const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
+	try {
+		await fs.writeFile(temporary, `${JSON.stringify(value)}\n`, { mode: 0o600 });
+		await fs.rename(temporary, file);
+	} finally {
+		await fs.rm(temporary, { force:true }).catch(() => {});
+	}
+}
 function freshness(fetchedAt, now, staleHours, expireHours) {
 	const fetchedTime = Date.parse(fetchedAt), currentTime = Date.parse(now);
 	const ageSeconds = Number.isFinite(fetchedTime) && Number.isFinite(currentTime) ? Math.max(0, (currentTime - fetchedTime) / 1000) : null;
@@ -56,8 +66,22 @@ function createWeatherDatabase(options) {
 	const { directory, providers } = options;
 	const staleHours = Math.max(0.25, Number(options.staleAfterHours) || 1);
 	const expireHours = Math.max(staleHours, Number(options.expiresAfterHours) || 24);
+	const inFlightProviderRequests = new Map();
 	async function providerResult(provider, request, force) {
 		const file = path.join(directory, provider.id, `${key(request.position, request.weatherDays, request.marineDays)}.json`);
+		while (inFlightProviderRequests.has(file)) {
+			const active = inFlightProviderRequests.get(file);
+			if (active.force || !force) return active.promise;
+			await active.promise.catch(() => {});
+			if (inFlightProviderRequests.get(file) === active) inFlightProviderRequests.delete(file);
+		}
+		const entry = { force, promise:null };
+		entry.promise = providerResultUncoalesced(provider, request, force, file);
+		inFlightProviderRequests.set(file, entry);
+		try { return await entry.promise; }
+		finally { if (inFlightProviderRequests.get(file) === entry) inFlightProviderRequests.delete(file); }
+	}
+	async function providerResultUncoalesced(provider, request, force, file) {
 		const cached = await readJson(file);
 		const cachedFreshness = cached?.fetchedAt ? freshness(cached.fetchedAt, request.now, staleHours, expireHours) : null;
 		if (cached?.valid !== false && !force && cachedFreshness?.state === "fresh") return { ...cached, cache: "hit", freshness: cachedFreshness };

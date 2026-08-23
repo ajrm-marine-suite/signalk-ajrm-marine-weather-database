@@ -70,6 +70,8 @@ select, input[type="search"] {
 .table-wrap td { border-color: #dbe4e7; }
 pre { white-space: pre-wrap; }
 summary { cursor: pointer; font-weight: 700; }
+.alpha-warning { margin-top: 1rem; padding: .8rem; border-left: 4px solid #f0b24b; background: #35270e; }
+footer { padding: 0 1.4rem 1.4rem; color: #9ec1c9; text-align: right; font-size: .9rem; }
 @media (max-width: 760px) {
 	header { align-items: flex-start; }
 	header p { display: none; }

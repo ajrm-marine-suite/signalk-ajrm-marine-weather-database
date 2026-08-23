@@ -31,6 +31,48 @@ test("plugin registers standalone weather service and retracts it on stop",async
 });
 test("appIcon exists at package root and served public path",()=>{const packageJson=require("../package.json"); assert.equal(packageJson.signalk.appIcon,"./icon-120.png"); for(const file of ["../icon-120.png","../public/icon-120.png"]) assert.ok(fs.statSync(path.join(__dirname,file)).size>100);});
 
+test("forced weather refresh requires Signal K write access",async(t)=>{
+	const directory=await fsp.mkdtemp(path.join(os.tmpdir(),"ajrm-weather-auth-plugin-")); t.after(()=>fsp.rm(directory,{recursive:true,force:true}));
+	const app={getDataDirPath:()=>directory,setPluginStatus(){},handleMessage(){},subscriptionmanager:{subscribe(){}},ajrmMarineLocations:{async list(){return[];}}};
+	const plugin=createPlugin(app); plugin.start({openMeteoEnabled:false}); t.after(()=>plugin.stop());
+	const routes=new Map(); const registrations=[];
+	const router={access(level){return{
+		get(route,handler){registrations.push({method:"GET",route,level});routes.set(`GET ${route}`,handler);},
+		post(route,handler){registrations.push({method:"POST",route,level});routes.set(`POST ${route}`,handler);},
+	};}};
+	plugin.registerWithRouter(router);
+	assert.deepEqual(registrations,[
+		{method:"GET",route:"/status",level:"readonly"},
+		{method:"GET",route:"/providers",level:"readonly"},
+		{method:"GET",route:"/locations",level:"readonly"},
+		{method:"GET",route:"/weather/status",level:"readonly"},
+		{method:"GET",route:"/weather/nearest",level:"readonly"},
+		{method:"POST",route:"/weather/refresh",level:"readwrite"},
+	]);
+	const call=async(req)=>{const response={statusCode:200,status(code){this.statusCode=code;return this;},json(value){this.body=value;return this;}}; await routes.get("POST /weather/refresh")({method:"POST",body:{},...req},response); return response;};
+	assert.equal((await call({skIsAuthenticated:false})).statusCode,403);
+	assert.equal((await call({skIsAuthenticated:true,skPrincipal:{permissions:"readonly"}})).statusCode,403);
+	assert.equal((await call({skIsAuthenticated:true,skPrincipal:{permissions:"readwrite"}})).statusCode,200);
+	assert.equal((await call({})).statusCode,200,"security-disabled Signal K keeps legacy local access");
+	const refreshOperation=plugin.getOpenApi().paths["/weather/refresh"].post;
+	assert.deepEqual(refreshOperation.security,[{signalk:[]}]);
+	assert.equal(refreshOperation["x-signalk-access"],"readwrite");
+	assert.equal(refreshOperation.responses["400"].content["application/json"].schema.$ref,"#/components/schemas/ErrorResponse");
+	assert.equal(plugin.getOpenApi().components.schemas.ErrorResponse.required.includes("error"),true);
+	assert.equal(refreshOperation.responses["403"].description.includes("read/write"),true);
+});
+
+test("router registration falls back when Signal K access routers are unavailable",async(t)=>{
+	const directory=await fsp.mkdtemp(path.join(os.tmpdir(),"ajrm-weather-router-fallback-")); t.after(()=>fsp.rm(directory,{recursive:true,force:true}));
+	const app={getDataDirPath:()=>directory,setPluginStatus(){},handleMessage(){},subscriptionmanager:{subscribe(){}},ajrmMarineLocations:{async list(){return[];}}};
+	const plugin=createPlugin(app); plugin.start({openMeteoEnabled:false}); t.after(()=>plugin.stop());
+	const routes=[]; plugin.registerWithRouter({
+		get(route){routes.push(`GET ${route}`);},
+		post(route){routes.push(`POST ${route}`);},
+	});
+	assert.deepEqual(routes,["GET /status","GET /providers","GET /locations","GET /weather/status","GET /weather/nearest","POST /weather/refresh"]);
+});
+
 test("weather locations reject invalid geometry and do not let blank direct positions override valid features",async(t)=>{
 	const directory=await fsp.mkdtemp(path.join(os.tmpdir(),"ajrm-weather-position-plugin-")); t.after(()=>fsp.rm(directory,{recursive:true,force:true}));
 	const validFeature={id:"valid-feature",name:"Valid feature",types:["harbour"],position:{latitude:null,longitude:" "},feature:{geometry:{type:"Point",coordinates:[-5.63,56.27]}}};

@@ -5,6 +5,7 @@ const path = require("node:path");
 const { createProviderRegistry } = require("./provider-registry.cjs");
 const { createOpenMeteoProvider } = require("./providers/open-meteo.cjs");
 const { createWeatherDatabase, validPosition } = require("./database.cjs");
+const { primaryFallbackMetadata } = require("./aggregation.cjs");
 
 const packageJson = require("../package.json");
 const SERVICE_SYMBOL = Symbol.for("mcdonaldajr.ajrmMarineWeatherDatabase");
@@ -115,12 +116,14 @@ module.exports = function ajrmMarineWeatherDatabase(app) {
 	};
 
 	plugin.registerWithRouter = (router) => {
-		router.get("/status", async (_req,res) => res.json(await databaseStatus()));
-		router.get("/providers", (_req,res) => res.json(providers?.list?.() || []));
-		router.get("/locations", async (_req,res) => res.json(await weatherLocations()));
-		router.get("/weather/status", async (req,res) => sendProjection(res, weatherRequest(req), false));
-		router.get("/weather/nearest", async (req,res) => sendNearestProjection(res, weatherRequest(req)));
-		router.post("/weather/refresh", write(async (req,res) => sendProjection(res, weatherRequest(req), true)));
+		const readRouter = typeof router.access === "function" ? router.access("readonly") : router;
+		const writeRouter = typeof router.access === "function" ? router.access("readwrite") : router;
+		readRouter.get("/status", async (_req,res) => res.json(await databaseStatus()));
+		readRouter.get("/providers", (_req,res) => res.json(providers?.list?.() || []));
+		readRouter.get("/locations", async (_req,res) => res.json(await weatherLocations()));
+		readRouter.get("/weather/status", async (req,res) => sendProjection(res, weatherRequest(req), false));
+		readRouter.get("/weather/nearest", async (req,res) => sendNearestProjection(res, weatherRequest(req)));
+		writeRouter.post("/weather/refresh", write(async (req,res) => sendProjection(res, weatherRequest(req), true)));
 	};
 
 	async function sendProjection(res, request, force) {
@@ -169,10 +172,10 @@ module.exports = function ajrmMarineWeatherDatabase(app) {
 			? await database.resolve({ ...request, position:selected.position, contextLocation:selected })
 			: await database.resolve({ ...request, position:null, contextLocation:null });
 		if (attempted.valid) {
-			const fallbackSources = attempted.sources.filter((source) => source.valid && source.cache === "fallback");
+			const fallback = primaryFallbackMetadata(attempted);
 			return publishProjection({ ...attempted, locationResolution:locationResolution({ requestedPosition,
-				selectedLocation:selected, mode:"nearest-location", cacheFallback:fallbackSources.length > 0,
-				fallbackReason:fallbackSources.map((source) => source.fallbackReason).filter(Boolean).join("; ") || null }) });
+				selectedLocation:selected, mode:"nearest-location", cacheFallback:fallback.cacheFallback,
+				fallbackReason:fallback.fallbackReason }) });
 		}
 		const fallbackReason = unavailableReason || attempted.error || "The nearest weather location did not return a usable forecast.";
 		const cached = await database.nearestCached({ ...request, position:requestedPosition, fallbackReason });
@@ -238,6 +241,14 @@ module.exports = function ajrmMarineWeatherDatabase(app) {
 	function withoutHourly(value) { if (!value || typeof value !== "object") return value; const { hourly, ...compact } = value; return compact; }
 	function publish(pathName, value) { app.handleMessage?.(plugin.id, { context:"vessels.self", updates:[{ source:{ label:plugin.id }, timestamp:new Date().toISOString(), values:[{ path:pathName, value }] }] }); }
 	function publishMetadata() { app.handleMessage?.(plugin.id, { updates:[{ meta:[{ path:WEATHER_PATH, value:{ description:"Provider-neutral weather projection with explicit source selection, provenance and freshness; SI units." } }] }] }); }
-	function write(handler) { return (req,res,next) => { if (req.user && req.user.readOnly) return res.status(403).json({ error:"Write access is required." }); return handler(req,res,next); }; }
+	function write(handler) {
+		return (req,res,next) => {
+			const permission = req.skPrincipal?.permissions;
+			if (permission === "admin" || permission === "readwrite" || (permission === undefined && req.skIsAuthenticated !== false)) {
+				return handler(req,res,next);
+			}
+			return res.status(403).json({ error:"Weather Database updates require Signal K read/write or admin access." });
+		};
+	}
 	return plugin;
 };

@@ -35,4 +35,10 @@ function sourceSummary(entry) {
 		fallbackReason: entry.fallbackReason || null, freshness: entry.freshness || null, error: entry.error || "" };
 }
 
-module.exports = { aggregateProviderResults };
+function primaryFallbackMetadata(projection) {
+	const source = projection?.source;
+	const cacheFallback = source?.valid !== false && source?.cache === "fallback";
+	return { cacheFallback, fallbackReason:cacheFallback ? source.fallbackReason || null : null };
+}
+
+module.exports = { aggregateProviderResults, primaryFallbackMetadata };

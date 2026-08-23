@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AJRM Marine Weather Database</title><link rel="stylesheet" href="styles.css?v=0.1.9"></head><body>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AJRM Marine Weather Database</title><link rel="stylesheet" href="styles.css?v=0.1.10"></head><body>
 <header><img src="icon.svg" alt=""><div><h1>Weather Database</h1><p>Provider caches, freshness and explicit forecast selection</p></div><button id="refresh" type="button">Refresh status</button></header>
 <main>
 <section><h2>Providers</h2><p id="summary">Loading…</p><table><thead><tr><th>Provider</th><th>Enabled</th><th>Configured</th><th>Cache entries</th><th>Capabilities</th></tr></thead><tbody id="providers"></tbody></table></section>
@@ -7,5 +7,6 @@
 	<div id="forecastStatus" class="forecast-status">No weather location selected.</div>
 	<div class="table-wrap"><table id="forecastTable"><thead></thead><tbody></tbody></table></div>
 </section>
-<section><details><summary>Latest resolved forecast diagnostics</summary><pre id="latest">No forecast has been requested yet.</pre></details></section>
-</main><script type="module" src="app.js?v=0.1.9"></script></body></html>
+	<section><details><summary>Latest resolved forecast diagnostics</summary><pre id="latest">No forecast has been requested yet.</pre></details></section>
+	<section><details><summary>Help and safety</summary><p><strong>Load forecast</strong> reuses a fresh cache and asks the provider only when needed. <strong>Refresh forecast</strong> forces provider access and requires Signal K read/write or admin permission. Source, fetched time, freshness, cache state and any offline fallback remain visible above the table.</p><p>Forecasts are planning aids. Verify the selected location, age, provider and conditions against appropriate official information before making operational decisions.</p><p class="alpha-warning">This software is Alpha Release and has not been tested in live environments and must not be relied upon for navigation or safety. The Authors do not accept any responsibility for loss or damage as a result of using this software.</p></details></section>
+	</main><footer>AJRM Marine Weather Database v0.1.10</footer><script type="module" src="app.js?v=0.1.10"></script></body></html>

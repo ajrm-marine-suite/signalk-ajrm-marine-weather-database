@@ -7,6 +7,7 @@ const test = require("node:test");
 const { createProviderRegistry } = require("../plugin/provider-registry.cjs");
 const { createWeatherDatabase, validPosition } = require("../plugin/database.cjs");
 const { createOpenMeteoProvider } = require("../plugin/providers/open-meteo.cjs");
+const { primaryFallbackMetadata } = require("../plugin/aggregation.cjs");
 
 test("position validation rejects blank coercions and accepts explicit numeric coordinates", () => {
 	assert.equal(validPosition({ latitude:null, longitude:null }), null);
@@ -42,6 +43,92 @@ test("database refreshes providers simultaneously and selects fields explicitly"
 	assert.equal(result.current.windSpeedMps,4);
 	assert.equal(result.selection.selectedProviderByField.windSpeedMps,"second");
 	assert.equal(result.sources.length,2);
+});
+
+test("same-key requests share one provider refresh", async (t) => {
+	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "ajrm-weather-coalesced-"));
+	t.after(() => fs.rm(directory, { recursive:true, force:true }));
+	let calls = 0;
+	let release;
+	const pending = new Promise((resolve) => { release = resolve; });
+	let markStarted;
+	const providerStarted = new Promise((resolve) => { markStarted = resolve; });
+	const provider = { id:"coalesced", name:"Coalesced provider", enabled:true, configured:true,
+		persistentCachePermitted:true, capabilities:[], async fetch() {
+			calls += 1;
+			markStarted();
+			await pending;
+			return { current:{ temperatureC:10 }, hourly:{ forecast:{ source:"network" }, marine:null } };
+		} };
+	const providers = createProviderRegistry([provider], ["coalesced"]);
+	const database = createWeatherDatabase({ directory, providers, staleAfterHours:1, expiresAfterHours:24 });
+	const request = { position:{ latitude:56.27, longitude:-5.63 } };
+	const first = database.resolve(request);
+	const second = database.resolve(request);
+	await providerStarted;
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.equal(calls, 1);
+	release();
+	const results = await Promise.all([first, second]);
+	assert.equal(results[0].valid, true);
+	assert.equal(results[1].valid, true);
+	assert.equal(results[0].source.cache, "network");
+	assert.equal(results[1].source.cache, "network");
+});
+
+test("independent database instances use collision-safe atomic temporary files", async (t) => {
+	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "ajrm-weather-atomic-"));
+	t.after(() => fs.rm(directory, { recursive:true, force:true }));
+	let arrivals = 0;
+	let release;
+	const bothStarted = new Promise((resolve) => { release = resolve; });
+	const provider = { id:"atomic", name:"Atomic provider", enabled:true, configured:true,
+		persistentCachePermitted:true, capabilities:[], async fetch() {
+			arrivals += 1;
+			if (arrivals === 2) release();
+			await bothStarted;
+			return { current:{ temperatureC:9 }, hourly:{ forecast:{ source:"network" }, marine:null } };
+		} };
+	const firstDatabase = createWeatherDatabase({ directory,
+		providers:createProviderRegistry([provider], ["atomic"]), staleAfterHours:1, expiresAfterHours:24 });
+	const secondDatabase = createWeatherDatabase({ directory,
+		providers:createProviderRegistry([provider], ["atomic"]), staleAfterHours:1, expiresAfterHours:24 });
+	const request = { position:{ latitude:56.27, longitude:-5.63 } };
+	const results = await Promise.all([firstDatabase.resolve(request), secondDatabase.resolve(request)]);
+	assert.equal(results[0].valid, true);
+	assert.equal(results[1].valid, true);
+	const providerDirectory = path.join(directory, "atomic");
+	const files = await fs.readdir(providerDirectory);
+	assert.deepEqual(files, ["56.2700_-5.6300_16_8.json"]);
+	assert.equal(JSON.parse(await fs.readFile(path.join(providerDirectory, files[0]), "utf8")).valid, true);
+});
+
+test("secondary cached field fallback does not label a live primary forecast as cached", async (t) => {
+	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "ajrm-weather-primary-provenance-"));
+	t.after(() => fs.rm(directory, { recursive:true, force:true }));
+	const position = { latitude:56.27, longitude:-5.63 };
+	const primary = { id:"primary", name:"Primary live provider", enabled:true, configured:true,
+		persistentCachePermitted:true, capabilities:[], async fetch() {
+			return { current:{ temperatureC:10, windSpeedMps:null }, hourly:{ forecast:{ source:"live" }, marine:null } };
+		} };
+	const secondary = { id:"secondary", name:"Secondary cached provider", enabled:true, configured:true,
+		persistentCachePermitted:true, capabilities:[], async fetch() { throw new Error("secondary offline"); } };
+	const providers = createProviderRegistry([primary, secondary], ["primary", "secondary"]);
+	const secondaryDirectory = path.join(directory, "secondary");
+	await fs.mkdir(secondaryDirectory, { recursive:true });
+	await fs.writeFile(path.join(secondaryDirectory, "56.2700_-5.6300_16_8.json"), JSON.stringify({
+		providerId:"secondary", providerName:"Secondary cached provider", valid:true,
+		fetchedAt:new Date(Date.now() - 2 * 3600 * 1000).toISOString(), persistent:true,
+		current:{ temperatureC:12, windSpeedMps:4 }, hourly:{ forecast:{ source:"cached" }, marine:null },
+		error:"", fallbackReason:null,
+	}));
+	const database = createWeatherDatabase({ directory, providers, staleAfterHours:1, expiresAfterHours:24 });
+	const result = await database.resolve({ position });
+	assert.equal(result.source.providerId, "primary");
+	assert.equal(result.source.cache, "network");
+	assert.equal(result.sources.find((source) => source.providerId === "secondary").cache, "fallback");
+	assert.equal(result.current.windSpeedMps, 4);
+	assert.deepEqual(primaryFallbackMetadata(result), { cacheFallback:false, fallbackReason:null });
 });
 
 test("exact cache order uses a recent record without fetch and refreshes before an older fallback", async (t) => {
