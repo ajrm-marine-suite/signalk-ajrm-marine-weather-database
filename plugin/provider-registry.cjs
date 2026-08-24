@@ -12,7 +12,8 @@ function createProviderRegistry(providers = [], priority = []) {
 		list: () => order.map((id) => {
 			const provider = byId.get(id);
 			return { id, name: provider.name, enabled: provider.enabled, configured: provider.configured,
-				capabilities: provider.capabilities, persistentCachePermitted: provider.persistentCachePermitted };
+				capabilities: provider.capabilities, persistentCachePermitted: provider.persistentCachePermitted,
+				refreshAfterHours: provider.refreshAfterHours };
 		}),
 		enabled: () => order.map((id) => byId.get(id)).filter((provider) => provider.enabled && provider.configured),
 	});

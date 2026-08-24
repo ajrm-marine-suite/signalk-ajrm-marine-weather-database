@@ -67,8 +67,8 @@ module.exports = function ajrmMarineWeatherDatabase(app) {
 		openMeteoEnabled:{ type:"boolean", title:"Enable Open-Meteo weather and marine forecasts", default:true },
 		providerPriority:{ type:"string", title:"Provider priority (comma-separated ids)", default:"open-meteo",
 			description:"All enabled providers refresh simultaneously. This order selects the primary hourly series and null-only field fallbacks; forecasts are never silently averaged." },
-		refreshAfterHours:{ type:"number", title:"Refresh forecasts after (hours)", default:1, minimum:0.25, maximum:24 },
-		expiresAfterHours:{ type:"number", title:"Reject cached forecasts older than (hours)", default:24, minimum:1, maximum:168 },
+		openMeteoRefreshAfterHours:{ type:"number", title:"Open-Meteo refresh period (hours)", default:1, minimum:0.25, maximum:24,
+			description:"Provider-specific period after which an Open-Meteo forecast is stale and a refresh is attempted. Stored forecasts do not expire." },
 	} };
 	plugin.getOpenApi = () => JSON.parse(fs.readFileSync(path.join(__dirname, "openApi.json"), "utf8"));
 
@@ -76,9 +76,9 @@ module.exports = function ajrmMarineWeatherDatabase(app) {
 		if (running) return;
 		running = true;
 		const priority = String(configured.providerPriority || "open-meteo").split(",").map((value) => value.trim()).filter(Boolean);
-		providers = createProviderRegistry([createOpenMeteoProvider({ enabled:configured.openMeteoEnabled !== false })], priority);
-		database = createWeatherDatabase({ directory:path.join(dataDirectory, "providers"), providers,
-			staleAfterHours:Number(configured.refreshAfterHours) || 1, expiresAfterHours:Number(configured.expiresAfterHours) || 24 });
+		providers = createProviderRegistry([createOpenMeteoProvider({ enabled:configured.openMeteoEnabled !== false,
+			refreshAfterHours:Number(configured.openMeteoRefreshAfterHours ?? configured.refreshAfterHours) || 1 })], priority);
+		database = createWeatherDatabase({ directory:path.join(dataDirectory, "providers"), providers });
 		const service = Object.freeze({
 			contract:"ajrm-marine-weather-database-service-v1", contractVersion:1,
 			status:(request = {}) => resolve(request), refresh:(request = {}) => resolve({ ...request, force:true }),

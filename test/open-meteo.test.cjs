@@ -10,6 +10,11 @@ test("Open-Meteo adapter normalizes wind and direction",async()=>{
 	for(const url of urls){assert.equal(url.searchParams.get("timezone"),"GMT");assert.equal(url.searchParams.get("past_days"),"1");assert.equal(url.searchParams.has("past_hours"),false);}
 });
 
+test("Open-Meteo owns its configured forecast refresh period",()=>{
+	assert.equal(createOpenMeteoProvider({fetchFn:async()=>{},refreshAfterHours:3}).refreshAfterHours,3);
+	assert.equal(createOpenMeteoProvider({fetchFn:async()=>{}}).refreshAfterHours,1);
+});
+
 test("current summary remains nearest to now when hourly series includes the prior day",()=>{
 	const forecast={hourly:{
 		time:["2026-08-20T23:00","2026-08-21T06:00","2026-08-21T07:00"],

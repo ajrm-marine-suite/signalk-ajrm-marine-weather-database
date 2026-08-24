@@ -63,9 +63,12 @@ function createOpenMeteoProvider(options = {}) {
 	const fetchFn = options.fetchFn || globalThis.fetch;
 	const configuredTimeout = Number(options.timeoutMs);
 	const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? Math.max(1, Math.round(configuredTimeout)) : DEFAULT_REQUEST_TIMEOUT_MS;
+	const configuredRefreshHours = Number(options.refreshAfterHours);
+	const refreshAfterHours = Number.isFinite(configuredRefreshHours) ? Math.max(.25, configuredRefreshHours) : 1;
 	return Object.freeze({
 		id: "open-meteo", name: "Open-Meteo", enabled: options.enabled !== false,
 		configured: typeof fetchFn === "function", persistentCachePermitted: true,
+		refreshAfterHours,
 		capabilities: ["atmospheric-hourly", "marine-hourly", "current-summary"],
 		async fetch(request) {
 			const { position, weatherDays, marineDays, now } = request;

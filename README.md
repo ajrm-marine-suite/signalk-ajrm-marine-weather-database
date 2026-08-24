@@ -14,7 +14,7 @@ Location Editor. The selector groups them by kind so similarly named records
 remain distinguishable. Selecting one displays the same concise hourly weather/marine columns used by
 Marine Planning's **Fetched Weather** tab. Selection is remembered in the
 browser. The live search matches location names, kinds and descriptions.
-**Load forecast** reuses a fresh provider cache and refreshes stale or
+**Load forecast** reuses a fresh provider cache and refreshes provider-stale or
 missing data; **Refresh forecast** explicitly asks every enabled provider for a
 new forecast. Provider data remain in Weather Database, never in Locations.
 
@@ -38,7 +38,14 @@ This makes later provider additions additive rather than a replacement for Open-
 
 ## Offline operation
 
-Provider records are stored separately on disk. Fresh cache entries avoid a network call. Open-Meteo's combined weather/marine request has a 15-second deadline, including response-body parsing, so a blackholed connection cannot prevent fallback. If refresh fails or times out, a non-expired entry is returned as an explicit offline fallback with the failure reason. Expired data remain visible in database diagnostics but are not presented as a valid forecast.
+Provider records are stored separately on disk. Each provider owns its refresh
+period; Open-Meteo defaults to one hour and is separately configurable. Fresh
+cache entries avoid a network call. Open-Meteo's combined weather/marine request
+has a 15-second deadline, including response-body parsing, so a blackholed
+connection cannot prevent fallback. If refresh fails or times out, the stored
+entry remains available indefinitely as an explicit offline fallback with its
+age and failure reason. Forecast age is labelled; consumers use Warning after
+24 hours and Danger after 72 hours rather than discarding the record.
 
 Requests for the same provider and rounded coordinate/horizon cache key share
 one in-flight refresh. Persistent writes use a unique temporary file followed
@@ -62,8 +69,8 @@ selection mode and any cache fallback reason.
 
 Nearest-location resolution keeps the requested place authoritative in this
 fixed order: reuse a recent exact-location cache; otherwise ask the provider;
-use a still-valid older exact-location cache if that attempt fails; and only
-then select the nearest different non-expired cached coordinate group. Provider
+use an older exact-location cache if that attempt fails; and only
+then select the nearest different stored cached coordinate group. Provider
 priority is preserved within that one group and provider records from different
 locations are never combined. New cache records retain the request position and
 a non-authoritative snapshot of the Locations context for offline
@@ -97,7 +104,7 @@ payloads are retained as explicit provenance and for current Planning detail vie
 
 ```sh
 cd ~/.signalk
-npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-weather-database.git#v0.1.11 --omit=dev --no-package-lock
+npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-weather-database.git#v0.1.12 --omit=dev --no-package-lock
 sudo systemctl restart signalk
 ```
 

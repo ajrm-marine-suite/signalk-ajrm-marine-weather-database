@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.12 — 2026-08-24
+
+- Move refresh periods onto individual providers; Open-Meteo's period is
+  separately configurable and defaults to one hour.
+- Stop expiring stored forecasts. Offline fallback can use any age, carries an
+  explicit age label, and reports Warning after 24 hours and Danger after 72.
+- Continue labelling the selected forecast location and distance, including
+  nearest cached fallbacks.
+
 ## 0.1.11 — 2026-08-24
 
 - Add optional `pastDays` requests, defaulting to zero, and pass the bounded

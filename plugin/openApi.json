@@ -1,6 +1,6 @@
 {
   "openapi":"3.0.3",
-  "info":{"title":"AJRM Marine Weather Database API","version":"0.1.11"},
+  "info":{"title":"AJRM Marine Weather Database API","version":"0.1.12"},
   "paths":{
     "/status":{"get":{"responses":{"200":{"description":"Provider and cache status"}}}},
     "/providers":{"get":{"responses":{"200":{"description":"Configured providers in selection priority order"}}}},
@@ -17,7 +17,7 @@
 		}},
 		"/weather/nearest":{"get":{
 			"summary":"Resolve weather for the nearest eligible Locations point",
-			"description":"Uses the supplied vessel position to choose the nearest eligible Locations record independently of tidal selection. Resolution order is a recent exact-location cache, a provider attempt, a usable older exact-location cache after provider failure, then a different nearest non-expired cached coordinate group. Provider records from different locations are never mixed.",
+			"description":"Uses the supplied vessel position to choose the nearest eligible Locations record independently of tidal selection. Resolution order is a recent exact-location cache, a provider attempt, a usable older exact-location cache after provider failure, then a different nearest stored cached coordinate group. Provider records from different locations are never mixed. Stored forecasts remain available indefinitely with explicit age metadata.",
 			"parameters":[
 				{"name":"latitude","in":"query","required":true,"schema":{"type":"number","minimum":-90,"maximum":90}},
 				{"name":"longitude","in":"query","required":true,"schema":{"type":"number","minimum":-180,"maximum":180}},

@@ -65,6 +65,8 @@ select, input[type="search"] {
 	border-left: 4px solid #7bd9e7;
 	background: #0b2026;
 }
+.forecast-status[data-age-band="warning"] { border-left-color: #f0b24b; background: #35270e; }
+.forecast-status[data-age-band="danger"] { border-left-color: #ef4444; background: #3b1118; }
 .table-wrap { max-height: calc(100vh - 320px); overflow: auto; border: 1px solid #28515d; }
 .table-wrap table { min-width: 1100px; background: #fff; color: #172026; }
 .table-wrap td { border-color: #dbe4e7; }

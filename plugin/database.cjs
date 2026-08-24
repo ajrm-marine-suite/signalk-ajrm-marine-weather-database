@@ -37,13 +37,20 @@ async function writeJson(file, value) {
 		await fs.rm(temporary, { force:true }).catch(() => {});
 	}
 }
-function freshness(fetchedAt, now, staleHours, expireHours) {
+function freshness(fetchedAt, now, refreshAfterHours) {
 	const fetchedTime = Date.parse(fetchedAt), currentTime = Date.parse(now);
 	const ageSeconds = Number.isFinite(fetchedTime) && Number.isFinite(currentTime) ? Math.max(0, (currentTime - fetchedTime) / 1000) : null;
+	const staleAfterSeconds = refreshAfterHours * 3600;
 	if (!Number.isFinite(ageSeconds)) return { ageSeconds:null, state:"invalid",
-		staleAfterSeconds:staleHours * 3600, expiresAfterSeconds:expireHours * 3600 };
-	return { ageSeconds, state: ageSeconds > expireHours * 3600 ? "expired" : ageSeconds > staleHours * 3600 ? "stale" : "fresh",
-		staleAfterSeconds: staleHours * 3600, expiresAfterSeconds: expireHours * 3600 };
+		staleAfterSeconds, expiresAfterSeconds:null, ageBand:"unknown", warningAfterSeconds:24 * 3600, dangerAfterSeconds:72 * 3600 };
+	return { ageSeconds, state: ageSeconds > staleAfterSeconds ? "stale" : "fresh", staleAfterSeconds,
+		expiresAfterSeconds:null, ageBand:ageSeconds > 72 * 3600 ? "danger" : ageSeconds > 24 * 3600 ? "warning" : "normal",
+		warningAfterSeconds:24 * 3600, dangerAfterSeconds:72 * 3600 };
+}
+
+function providerRefreshHours(provider) {
+	const configured = Number(provider?.refreshAfterHours);
+	return Number.isFinite(configured) ? Math.max(.25, configured) : 1;
 }
 function contextSummary(location) {
 	if (!location) return null;
@@ -68,8 +75,6 @@ function cachedContext(filename, record) {
 
 function createWeatherDatabase(options) {
 	const { directory, providers } = options;
-	const staleHours = Math.max(0.25, Number(options.staleAfterHours) || 1);
-	const expireHours = Math.max(staleHours, Number(options.expiresAfterHours) || 24);
 	const inFlightProviderRequests = new Map();
 	async function providerResult(provider, request, force) {
 		const file = path.join(directory, provider.id, `${key(request.position, request.weatherDays, request.marineDays, request.pastDays)}.json`);
@@ -87,21 +92,22 @@ function createWeatherDatabase(options) {
 	}
 	async function providerResultUncoalesced(provider, request, force, file) {
 		const cached = await readJson(file);
-		const cachedFreshness = cached?.fetchedAt ? freshness(cached.fetchedAt, request.now, staleHours, expireHours) : null;
+		const refreshAfterHours = providerRefreshHours(provider);
+		const cachedFreshness = cached?.fetchedAt ? freshness(cached.fetchedAt, request.now, refreshAfterHours) : null;
 		if (cached?.valid !== false && !force && cachedFreshness?.state === "fresh") return { ...cached, cache: "hit", freshness: cachedFreshness };
 		try {
 			const value = await provider.fetch(request);
 			const record = { providerId: provider.id, providerName: provider.name, valid: true,
-				fetchedAt: new Date().toISOString(), persistent: provider.persistentCachePermitted,
+				fetchedAt: new Date(request.now).toISOString(), persistent: provider.persistentCachePermitted,
 				cacheContext:{ contract:"ajrm-marine-weather-cache-context-v2", contractVersion:2, position:request.position,
 					weatherDays:request.weatherDays, marineDays:request.marineDays, pastDays:request.pastDays, contextLocation:request.contextLocation },
 				current: value.current, hourly: value.hourly, error: "", fallbackReason: null };
 			if (provider.persistentCachePermitted) await writeJson(file, record);
-			return { ...record, cache: "network", freshness: freshness(record.fetchedAt, request.now, staleHours, expireHours) };
+			return { ...record, cache: "network", freshness: freshness(record.fetchedAt, request.now, refreshAfterHours) };
 		} catch (error) {
 			if (cached?.valid !== false && ["fresh", "stale"].includes(cachedFreshness?.state)) return { ...cached, cache: "fallback", freshness: cachedFreshness, fallbackReason: error.message };
 			return { providerId: provider.id, providerName: provider.name, valid: false, persistent: provider.persistentCachePermitted,
-				fetchedAt: cached?.fetchedAt || null, cache:cached ? cachedFreshness?.state === "expired" ? "expired" : "invalid" : "miss",
+				fetchedAt: cached?.fetchedAt || null, cache:cached ? "invalid" : "miss",
 				freshness: cachedFreshness, error: error.message };
 		}
 	}
@@ -132,7 +138,7 @@ function createWeatherDatabase(options) {
 				catch (error) { if (error instanceof SyntaxError) continue; throw error; }
 				const context = cachedContext(filename, record);
 				if (!record || !context) continue;
-				const recordFreshness = record.fetchedAt ? freshness(record.fetchedAt, now, staleHours, expireHours) : null;
+				const recordFreshness = record.fetchedAt ? freshness(record.fetchedAt, now, providerRefreshHours(provider)) : null;
 				if (record.valid === false || !["fresh", "stale"].includes(recordFreshness?.state)) continue;
 				const groupId = key(context.position, context.weatherDays, context.marineDays, context.pastDays);
 				if (!groups.has(groupId)) groups.set(groupId, { id:groupId, position:context.position, weatherDays:context.weatherDays,
@@ -148,7 +154,7 @@ function createWeatherDatabase(options) {
 			|| requestedHorizon(left) - requestedHorizon(right) || (right.weatherDays + right.marineDays) - (left.weatherDays + left.marineDays)
 			|| left.id.localeCompare(right.id))[0];
 		if (!selected) return aggregateProviderResults([], { now, position:null, contextLocation:null });
-		const reason = String(input.fallbackReason || "The nearest weather location is unavailable; using the nearest non-expired cached forecast.");
+		const reason = String(input.fallbackReason || "The nearest weather location is unavailable; using the nearest stored cached forecast.");
 		const results = active.map((provider) => {
 			const available = selected.records.get(provider.id);
 			if (!available) return { providerId:provider.id, providerName:provider.name, valid:false,
@@ -178,4 +184,4 @@ function distanceSquared(left, right) {
 	return Math.sin(deltaLatitude / 2) ** 2 + Math.cos(latitude1) * Math.cos(latitude2) * Math.sin(deltaLongitude / 2) ** 2;
 }
 
-module.exports = { createWeatherDatabase, validPosition };
+module.exports = { createWeatherDatabase, freshness, validPosition };

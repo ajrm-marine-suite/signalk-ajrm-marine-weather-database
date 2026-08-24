@@ -5,7 +5,17 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const { createProviderRegistry } = require("../plugin/provider-registry.cjs");
-const { createWeatherDatabase, validPosition } = require("../plugin/database.cjs");
+const { createWeatherDatabase, freshness, validPosition } = require("../plugin/database.cjs");
+
+test("forecast freshness uses provider refresh periods and never expires stored data", () => {
+	assert.equal(freshness("2026-08-20T00:00:00Z","2026-08-20T01:00:00Z",2).state,"fresh");
+	assert.equal(freshness("2026-08-20T00:00:00Z","2026-08-20T03:00:00Z",2).state,"stale");
+	assert.equal(freshness("2026-08-20T00:00:00Z","2026-08-21T01:00:00Z",2).ageBand,"warning");
+	const old = freshness("2026-08-20T00:00:00Z","2026-08-23T01:00:01Z",2);
+	assert.equal(old.state,"stale");
+	assert.equal(old.ageBand,"danger");
+	assert.equal(old.expiresAfterSeconds,null);
+});
 const { createOpenMeteoProvider } = require("../plugin/providers/open-meteo.cjs");
 const { primaryFallbackMetadata } = require("../plugin/aggregation.cjs");
 
@@ -297,7 +307,7 @@ test("nearest cached fallback matches pastDays exactly and treats legacy caches 
 	assert.equal(unavailable.valid, false, "no other history horizon may leak into a p2 request");
 });
 
-test("nearest cached fallback reads legacy horizons and rejects expired entries", async (t) => {
+test("nearest cached fallback reads legacy horizons and retains forecasts older than 24 hours", async (t) => {
 	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "ajrm-weather-legacy-cache-"));
 	t.after(() => fs.rm(directory, { recursive:true, force:true }));
 	const provider = { id:"legacy", name:"Legacy provider", enabled:true, configured:true, persistentCachePermitted:true, capabilities:[], async fetch(){ throw new Error("offline"); } };
@@ -312,8 +322,9 @@ test("nearest cached fallback reads legacy horizons and rejects expired entries"
 
 	const result = await database.nearestCached({ position:{ latitude:56.4101, longitude:-5.7101 }, now:currentTime.toISOString() });
 	assert.equal(result.valid, true);
-	assert.deepEqual(result.position, { latitude:56.4, longitude:-5.7 });
-	assert.equal(result.current.temperatureC, 8);
+	assert.deepEqual(result.position, { latitude:56.41, longitude:-5.71 });
+	assert.equal(result.current.temperatureC, 99);
+	assert.equal(result.freshness.ageBand, "warning");
 	assert.equal(result.contextLocation, null);
 });
 

@@ -1,7 +1,7 @@
 /** Weather Database webapp: provider status plus named, cached forecast inspection. */
 
-import { renderForecastTable } from "./weather-forecast-view.mjs?v=0.1.11";
-import { filterWeatherLocations } from "./weather-location-search.mjs?v=0.1.11";
+import { renderForecastTable } from "./weather-forecast-view.mjs?v=0.1.12";
+import { filterWeatherLocations } from "./weather-location-search.mjs?v=0.1.12";
 
 const apiBase = "/plugins/signalk-ajrm-marine-weather-database";
 const selectedLocationKey = "ajrmMarineWeatherDatabaseSelectedLocation";
@@ -33,8 +33,20 @@ function forecastDescription(result, rowCount) {
 	const source = result.source?.provider || result.source?.providerId || "weather provider";
 	const fetchedAt = result.source?.fetchedAt ? new Date(result.source.fetchedAt).toLocaleString() : "unknown time";
 	const cache = result.source?.cache || "unknown cache state";
+	const ageSeconds = Number(result.freshness?.ageSeconds);
+	const age = Number.isFinite(ageSeconds) ? `${(ageSeconds / 3600).toFixed(1)} h old` : "age unknown";
+	const ageWarning = result.freshness?.ageBand === "danger"
+		? "Danger: over 72 hours old"
+		: result.freshness?.ageBand === "warning"
+			? "Warning: over 24 hours old"
+			: "under 24 hours old";
 	const fallback = result.source?.fallbackReason ? ` · offline fallback: ${result.source.fallbackReason}` : "";
-	return `${location} · ${rowCount} hourly rows · ${source} · fetched ${fetchedAt} · ${cache}${fallback}`;
+	return `${location} · ${rowCount} hourly rows · ${source} · fetched ${fetchedAt} · ${age} · ${ageWarning} · ${cache}${fallback}`;
+}
+
+function setForecastAgeBand(freshness = {}) {
+	const status = $("forecastStatus");
+	status.dataset.ageBand = ["warning", "danger"].includes(freshness.ageBand) ? freshness.ageBand : "normal";
 }
 
 async function loadStatus() {
@@ -98,10 +110,12 @@ async function loadForecast(force = false) {
 		if (!result.valid) throw new Error(result.error || "No usable forecast is available.");
 		const rowCount = renderForecastTable($("forecastTable"), result);
 		$("forecastStatus").textContent = forecastDescription(result, rowCount);
+		setForecastAgeBand(result.freshness);
 		$("latest").textContent = JSON.stringify({ ...result, hourly:undefined }, null, 2);
 		await loadStatus();
 	} catch (error) {
 		$("forecastStatus").textContent = error.message;
+		setForecastAgeBand({});
 	} finally { setBusy(button, false); }
 }
 
