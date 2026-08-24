@@ -3,7 +3,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { createProviderRegistry } = require("./provider-registry.cjs");
-const { createOpenMeteoProvider } = require("./providers/open-meteo.cjs");
+const { createOpenMeteoProvider, currentSummary } = require("./providers/open-meteo.cjs");
 const { createWeatherDatabase, validPosition } = require("./database.cjs");
 const { primaryFallbackMetadata } = require("./aggregation.cjs");
 
@@ -83,6 +83,7 @@ module.exports = function ajrmMarineWeatherDatabase(app) {
 			contract:"ajrm-marine-weather-database-service-v1", contractVersion:1,
 			status:(request = {}) => resolve(request), refresh:(request = {}) => resolve({ ...request, force:true }),
 			resolveNearest:(request = {}) => resolveNearest(request),
+			forecastAt:(at) => forecastAt(at),
 			databaseStatus:() => databaseStatus(), listProviders:() => providers.list(),
 			listLocations:() => weatherLocations(),
 		});
@@ -239,6 +240,17 @@ module.exports = function ajrmMarineWeatherDatabase(app) {
 		if (typeof unsubscribe === "function") unsubscribes.push(unsubscribe);
 	}
 	function withoutHourly(value) { if (!value || typeof value !== "object") return value; const { hourly, ...compact } = value; return compact; }
+	function forecastAt(at) {
+		if (!latestProjection?.valid || !latestProjection.hourly) return { available:false };
+		const targetMs = Date.parse(at);
+		if (!Number.isFinite(targetMs)) return { available:false };
+		const current = currentSummary(latestProjection.hourly.forecast, latestProjection.hourly.marine, new Date(targetMs).toISOString());
+		if (!current?.at) return { available:false };
+		return { available:true, explicitlyForecast:true, current,
+			contextLocation:latestProjection.contextLocation || null,
+			locationResolution:latestProjection.locationResolution || null,
+			source:latestProjection.source || null, freshness:latestProjection.freshness || null };
+	}
 	function publish(pathName, value) { app.handleMessage?.(plugin.id, { context:"vessels.self", updates:[{ source:{ label:plugin.id }, timestamp:new Date().toISOString(), values:[{ path:pathName, value }] }] }); }
 	function publishMetadata() { app.handleMessage?.(plugin.id, { updates:[{ meta:[{ path:WEATHER_PATH, value:{ description:"Provider-neutral weather projection with explicit source selection, provenance and freshness; SI units." } }] }] }); }
 	function write(handler) {

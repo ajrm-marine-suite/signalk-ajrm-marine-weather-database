@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.13 — 2026-08-24
+
+- Expose a provider-neutral service method that selects and normalizes the
+  retained hourly forecast nearest a requested time, preserving provider,
+  location and cache-age provenance for Instruments hour browsing.
+
 ## 0.1.12 — 2026-08-24
 
 - Move refresh periods onto individual providers; Open-Meteo's period is

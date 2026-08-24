@@ -2,8 +2,11 @@
 
 A standalone Signal K weather database for AJRM Marine Suite. It owns network-provider access, durable offline caches, freshness, provenance and forecast selection. Location Editor remains the spatial catalogue; Display and Marine Planning consume this service.
 
-Version `0.1.11` adds optional, isolated past-day forecast requests. The normal
-default remains `pastDays: 0`; Marine Planning asks for one past day so its
+Version `0.1.13` adds a provider-neutral service method for selecting a
+normalized retained forecast hour, used by Instruments' Hour back and Hour
+forward controls. Optional, isolated past-day forecast requests retain their
+normal
+default of `pastDays: 0`; Marine Planning asks for one past day so its
 current-day table can begin at Europe/London midnight during BST. Weather and
 marine provider timestamps remain in GMT, and the current summary still uses
 the hour nearest now rather than a retained historical hour.
@@ -104,7 +107,7 @@ payloads are retained as explicit provenance and for current Planning detail vie
 
 ```sh
 cd ~/.signalk
-npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-weather-database.git#v0.1.12 --omit=dev --no-package-lock
+npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-weather-database.git#v0.1.13 --omit=dev --no-package-lock
 sudo systemctl restart signalk
 ```
 

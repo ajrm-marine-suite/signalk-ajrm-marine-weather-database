@@ -12,6 +12,7 @@ test("plugin registers standalone weather service and retracts it on stop",async
 	const messages=[]; const app={getDataDirPath:()=>directory,setPluginStatus(){},handleMessage(_id,message){messages.push(message);},subscriptionmanager:{subscribe(){}},ajrmMarineLocations:{contract:"ajrm-marine-locations-service-v1",async list(){return allLocations;},async get(id){return allLocations.find((location)=>location.id===id)||null;}}};
 	const plugin=createPlugin(app); plugin.start({openMeteoEnabled:false});
 	assert.equal(app.ajrmMarineWeatherDatabase.contract,"ajrm-marine-weather-database-service-v1");
+	assert.equal(typeof app.ajrmMarineWeatherDatabase.forecastAt,"function");
 	assert.equal(globalThis[Symbol.for("mcdonaldajr.ajrmMarineWeatherDatabase")],app.ajrmMarineWeatherDatabase);
 	const status=await app.ajrmMarineWeatherDatabase.databaseStatus(); assert.equal(status.contract,"ajrm-marine-weather-database-status-v1"); assert.equal(status.providers[0].enabled,false);
 	assert.equal(status.weatherLocationCount,4); assert.equal(status.locationsService,"ajrm-marine-locations-service-v1");
@@ -145,6 +146,10 @@ test("nearest weather contract resolves a Locations point then falls back to one
 	assert.equal(direct.locationResolution.mode,"nearest-location");
 	assert.equal(direct.locationResolution.selectedLocation.name,"Nearest harbour");
 	assert.equal(direct.locationResolution.cacheFallback,false);
+	const selectedHour=app.ajrmMarineWeatherDatabase.forecastAt("2026-08-23T10:20:00Z");
+	assert.equal(selectedHour.available,true);
+	assert.equal(selectedHour.current.at,"2026-08-23T10:00Z");
+	assert.equal(selectedHour.contextLocation.name,"Nearest harbour");
 	assert.ok(direct.locationResolution.distanceMetres>0);
 	assert.equal(fetchCalls,0,"a recent exact-location cache must avoid provider access");
 
