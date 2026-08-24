@@ -2,11 +2,11 @@
 
 A standalone Signal K weather database for AJRM Marine Suite. It owns network-provider access, durable offline caches, freshness, provenance and forecast selection. Location Editor remains the spatial catalogue; Display and Marine Planning consume this service.
 
-Version `0.1.10` serializes concurrent refreshes for the same provider/cache
-key, uses collision-safe atomic cache writes, and enforces Signal K read/write
-or admin access for forced refreshes. Nearest-location metadata now describes
-the selected primary forecast: a cached secondary field fallback no longer
-mislabels a live primary hourly forecast as wholly cached.
+Version `0.1.11` adds optional, isolated past-day forecast requests. The normal
+default remains `pastDays: 0`; Marine Planning asks for one past day so its
+current-day table can begin at Europe/London midnight during BST. Weather and
+marine provider timestamps remain in GMT, and the current summary still uses
+the hour nearest now rather than a retained historical hour.
 
 The webapp lists dedicated forecast points plus every harbour, marina,
 anchorage, mooring, tidal gate, standard tidal port and secondary tidal port held by
@@ -45,6 +45,14 @@ one in-flight refresh. Persistent writes use a unique temporary file followed
 by atomic replacement, so overlapping browser clients cannot make an otherwise
 successful provider result fail during cache rename.
 
+The optional `pastDays` request field is bounded from 0 to 7 and defaults to 0.
+It is sent to both the atmospheric and marine provider calls. Each history
+horizon has its own cache filename and cache context, and nearest-cache fallback
+requires an exact `pastDays` match. Existing cache files have no history suffix
+and remain valid only for the default present-only request. This prevents a
+Planning history request from changing or contaminating another consumer's
+normal forecast cache.
+
 Display can request weather for a resolved fresh or last-known vessel position through
 `GET /weather/nearest?latitude=…&longitude=…`. Weather Database selects the
 nearest eligible Locations record independently of any tide or tidal-gate
@@ -79,6 +87,9 @@ therefore requires an authenticated Signal K principal with `readwrite` or
 `admin` permission. Read-only status, location and nearest-weather routes remain
 available to normal Signal K webapp clients.
 
+`pastDays` is accepted by `GET /weather/status`, `GET /weather/nearest` and
+`POST /weather/refresh`. Omitting it preserves the present-only behaviour.
+
 Forecast speeds and angles use Signal K SI units. Provider-native hourly
 payloads are retained as explicit provenance and for current Planning detail views.
 
@@ -86,7 +97,7 @@ payloads are retained as explicit provenance and for current Planning detail vie
 
 ```sh
 cd ~/.signalk
-npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-weather-database.git#v0.1.10 --omit=dev --no-package-lock
+npm install git+https://github.com/ajrm-marine-suite/signalk-ajrm-marine-weather-database.git#v0.1.11 --omit=dev --no-package-lock
 sudo systemctl restart signalk
 ```
 

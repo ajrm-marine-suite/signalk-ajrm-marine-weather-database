@@ -16,12 +16,15 @@ function validPosition(value) {
 	return Number.isFinite(latitude) && latitude >= -90 && latitude <= 90 && Number.isFinite(longitude) && longitude >= -180 && longitude <= 180
 		? { latitude, longitude } : null;
 }
-function key(position, weatherDays, marineDays) {
-	return `${position.latitude.toFixed(4)}_${position.longitude.toFixed(4)}_${weatherDays}_${marineDays}`.replace(/[^a-z0-9._-]+/gi, "_");
+function key(position, weatherDays, marineDays, pastDays = 0) {
+	const history = pastDays > 0 ? `_p${pastDays}` : "";
+	return `${position.latitude.toFixed(4)}_${position.longitude.toFixed(4)}_${weatherDays}_${marineDays}${history}`.replace(/[^a-z0-9._-]+/gi, "_");
 }
 function requestDays(input = {}) {
+	const requestedPastDays = Number(input.pastDays);
 	return { weatherDays: Math.max(1, Math.min(16, Math.round(Number(input.weatherDays) || 16))),
-		marineDays: Math.max(1, Math.min(8, Math.round(Number(input.marineDays) || 8))) };
+		marineDays: Math.max(1, Math.min(8, Math.round(Number(input.marineDays) || 8))),
+		pastDays: Number.isFinite(requestedPastDays) ? Math.max(0, Math.min(7, Math.round(requestedPastDays))) : 0 };
 }
 async function readJson(file) { try { return JSON.parse(await fs.readFile(file, "utf8")); } catch (error) { if (error.code === "ENOENT") return null; throw error; } }
 async function writeJson(file, value) {
@@ -48,9 +51,9 @@ function contextSummary(location) {
 		category: location.category || null, position: validPosition(location.position) };
 }
 function legacyCacheContext(filename) {
-	const match = String(filename).match(/^(-?\d+(?:\.\d+)?)_(-?\d+(?:\.\d+)?)_(\d+)_(\d+)\.json$/);
+	const match = String(filename).match(/^(-?\d+(?:\.\d+)?)_(-?\d+(?:\.\d+)?)_(\d+)_(\d+)(?:_p(\d+))?\.json$/);
 	if (!match) return null;
-	return { position: validPosition({ latitude:match[1], longitude:match[2] }), weatherDays:Number(match[3]), marineDays:Number(match[4]), contextLocation:null };
+	return { position: validPosition({ latitude:match[1], longitude:match[2] }), weatherDays:Number(match[3]), marineDays:Number(match[4]), pastDays:Number(match[5] || 0), contextLocation:null };
 }
 function cachedContext(filename, record) {
 	const stored = record?.cacheContext;
@@ -58,8 +61,9 @@ function cachedContext(filename, record) {
 	const position = validPosition(stored?.position) || legacy?.position;
 	const weatherDays = Number(stored?.weatherDays ?? legacy?.weatherDays);
 	const marineDays = Number(stored?.marineDays ?? legacy?.marineDays);
-	if (!position || !Number.isInteger(weatherDays) || !Number.isInteger(marineDays)) return null;
-	return { position, weatherDays, marineDays, contextLocation:contextSummary(stored?.contextLocation) };
+	const pastDays = Number(stored?.pastDays ?? legacy?.pastDays ?? 0);
+	if (!position || !Number.isInteger(weatherDays) || !Number.isInteger(marineDays) || !Number.isInteger(pastDays) || pastDays < 0) return null;
+	return { position, weatherDays, marineDays, pastDays, contextLocation:contextSummary(stored?.contextLocation) };
 }
 
 function createWeatherDatabase(options) {
@@ -68,7 +72,7 @@ function createWeatherDatabase(options) {
 	const expireHours = Math.max(staleHours, Number(options.expiresAfterHours) || 24);
 	const inFlightProviderRequests = new Map();
 	async function providerResult(provider, request, force) {
-		const file = path.join(directory, provider.id, `${key(request.position, request.weatherDays, request.marineDays)}.json`);
+		const file = path.join(directory, provider.id, `${key(request.position, request.weatherDays, request.marineDays, request.pastDays)}.json`);
 		while (inFlightProviderRequests.has(file)) {
 			const active = inFlightProviderRequests.get(file);
 			if (active.force || !force) return active.promise;
@@ -89,8 +93,8 @@ function createWeatherDatabase(options) {
 			const value = await provider.fetch(request);
 			const record = { providerId: provider.id, providerName: provider.name, valid: true,
 				fetchedAt: new Date().toISOString(), persistent: provider.persistentCachePermitted,
-				cacheContext:{ contract:"ajrm-marine-weather-cache-context-v1", contractVersion:1, position:request.position,
-					weatherDays:request.weatherDays, marineDays:request.marineDays, contextLocation:request.contextLocation },
+				cacheContext:{ contract:"ajrm-marine-weather-cache-context-v2", contractVersion:2, position:request.position,
+					weatherDays:request.weatherDays, marineDays:request.marineDays, pastDays:request.pastDays, contextLocation:request.contextLocation },
 				current: value.current, hourly: value.hourly, error: "", fallbackReason: null };
 			if (provider.persistentCachePermitted) await writeJson(file, record);
 			return { ...record, cache: "network", freshness: freshness(record.fetchedAt, request.now, staleHours, expireHours) };
@@ -130,16 +134,17 @@ function createWeatherDatabase(options) {
 				if (!record || !context) continue;
 				const recordFreshness = record.fetchedAt ? freshness(record.fetchedAt, now, staleHours, expireHours) : null;
 				if (record.valid === false || !["fresh", "stale"].includes(recordFreshness?.state)) continue;
-				const groupId = key(context.position, context.weatherDays, context.marineDays);
+				const groupId = key(context.position, context.weatherDays, context.marineDays, context.pastDays);
 				if (!groups.has(groupId)) groups.set(groupId, { id:groupId, position:context.position, weatherDays:context.weatherDays,
-					marineDays:context.marineDays, contextLocation:context.contextLocation, records:new Map() });
+					marineDays:context.marineDays, pastDays:context.pastDays, contextLocation:context.contextLocation, records:new Map() });
 				const group = groups.get(groupId);
 				if (!group.contextLocation && context.contextLocation) group.contextLocation = context.contextLocation;
 				group.records.set(provider.id, { record, freshness:recordFreshness });
 			}
 		}
 		const requestedHorizon = (group) => group.weatherDays === days.weatherDays && group.marineDays === days.marineDays ? 0 : 1;
-		const selected = [...groups.values()].sort((left,right) => distanceSquared(requestedPosition, left.position) - distanceSquared(requestedPosition, right.position)
+		const compatibleGroups = [...groups.values()].filter((group) => group.pastDays === days.pastDays);
+		const selected = compatibleGroups.sort((left,right) => distanceSquared(requestedPosition, left.position) - distanceSquared(requestedPosition, right.position)
 			|| requestedHorizon(left) - requestedHorizon(right) || (right.weatherDays + right.marineDays) - (left.weatherDays + left.marineDays)
 			|| left.id.localeCompare(right.id))[0];
 		if (!selected) return aggregateProviderResults([], { now, position:null, contextLocation:null });

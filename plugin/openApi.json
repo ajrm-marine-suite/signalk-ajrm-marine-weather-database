@@ -1,11 +1,20 @@
 {
   "openapi":"3.0.3",
-  "info":{"title":"AJRM Marine Weather Database API","version":"0.1.10"},
+  "info":{"title":"AJRM Marine Weather Database API","version":"0.1.11"},
   "paths":{
     "/status":{"get":{"responses":{"200":{"description":"Provider and cache status"}}}},
     "/providers":{"get":{"responses":{"200":{"description":"Configured providers in selection priority order"}}}},
 		"/locations":{"get":{"responses":{"200":{"description":"Forecast points, ports, marinas, anchorages, moorings and tidal gates supplied by Location Editor"}}}},
-    "/weather/status":{"get":{"responses":{"200":{"description":"Cached multi-provider weather projection"}}}},
+    "/weather/status":{"get":{
+			"parameters":[
+				{"name":"latitude","in":"query","required":false,"schema":{"type":"number","minimum":-90,"maximum":90}},
+				{"name":"longitude","in":"query","required":false,"schema":{"type":"number","minimum":-180,"maximum":180}},
+				{"name":"weatherDays","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":16,"default":16}},
+				{"name":"marineDays","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":8,"default":8}},
+				{"name":"pastDays","in":"query","required":false,"description":"Include this many completed GMT calendar days before the forecast period. Cache entries are isolated by this value.","schema":{"type":"integer","minimum":0,"maximum":7,"default":0}}
+			],
+			"responses":{"200":{"description":"Cached multi-provider weather projection"}}
+		}},
 		"/weather/nearest":{"get":{
 			"summary":"Resolve weather for the nearest eligible Locations point",
 			"description":"Uses the supplied vessel position to choose the nearest eligible Locations record independently of tidal selection. Resolution order is a recent exact-location cache, a provider attempt, a usable older exact-location cache after provider failure, then a different nearest non-expired cached coordinate group. Provider records from different locations are never mixed.",
@@ -13,7 +22,8 @@
 				{"name":"latitude","in":"query","required":true,"schema":{"type":"number","minimum":-90,"maximum":90}},
 				{"name":"longitude","in":"query","required":true,"schema":{"type":"number","minimum":-180,"maximum":180}},
 				{"name":"weatherDays","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":16,"default":16}},
-				{"name":"marineDays","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":8,"default":8}}
+				{"name":"marineDays","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":8,"default":8}},
+				{"name":"pastDays","in":"query","required":false,"description":"Include this many completed GMT calendar days before the forecast period. Cache entries are isolated by this value.","schema":{"type":"integer","minimum":0,"maximum":7,"default":0}}
 			],
 			"responses":{
 				"200":{"description":"Weather projection with explicit nearest-location or nearest-cached-location resolution metadata","content":{"application/json":{"schema":{"type":"object","required":["contract","valid","locationResolution"],"properties":{"contract":{"type":"string","enum":["ajrm-marine-weather-projection-v2"]},"valid":{"type":"boolean"},"locationResolution":{"$ref":"#/components/schemas/LocationResolution"}}}}}},
@@ -24,7 +34,7 @@
 			"summary":"Force a provider refresh for one position or Locations record",
 			"security":[{"signalk":[]}],
 			"x-signalk-access":"readwrite",
-			"requestBody":{"required":false,"content":{"application/json":{"schema":{"type":"object","properties":{"locationId":{"type":"string"},"latitude":{"type":"number","minimum":-90,"maximum":90},"longitude":{"type":"number","minimum":-180,"maximum":180},"weatherDays":{"type":"integer","minimum":1,"maximum":16},"marineDays":{"type":"integer","minimum":1,"maximum":8}}}}}},
+			"requestBody":{"required":false,"content":{"application/json":{"schema":{"type":"object","properties":{"locationId":{"type":"string"},"latitude":{"type":"number","minimum":-90,"maximum":90},"longitude":{"type":"number","minimum":-180,"maximum":180},"weatherDays":{"type":"integer","minimum":1,"maximum":16},"marineDays":{"type":"integer","minimum":1,"maximum":8},"pastDays":{"type":"integer","minimum":0,"maximum":7,"default":0,"description":"Include this many completed GMT calendar days before the forecast period. Cache entries are isolated by this value."}}}}}},
 			"responses":{"200":{"description":"Refresh all enabled providers concurrently"},"400":{"description":"The requested position, location or provider refresh input is invalid","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorResponse"}}}},"403":{"description":"Signal K read/write or admin access is required"}}
 		}}
 		},

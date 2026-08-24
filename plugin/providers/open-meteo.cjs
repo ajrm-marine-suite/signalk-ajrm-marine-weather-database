@@ -69,17 +69,19 @@ function createOpenMeteoProvider(options = {}) {
 		capabilities: ["atmospheric-hourly", "marine-hourly", "current-summary"],
 		async fetch(request) {
 			const { position, weatherDays, marineDays, now } = request;
+			const requestedPastDays = Number(request.pastDays);
+			const pastDays = Number.isFinite(requestedPastDays) ? Math.max(0, Math.min(7, Math.round(requestedPastDays))) : 0;
 			const forecastUrl = new URL("https://api.open-meteo.com/v1/forecast");
 			forecastUrl.search = new URLSearchParams({
 				latitude: String(position.latitude), longitude: String(position.longitude),
 				hourly: "temperature_2m,wind_speed_10m,wind_gusts_10m,wind_direction_10m",
-				wind_speed_unit: "kn", forecast_days: String(weatherDays), timezone: "GMT",
+				wind_speed_unit: "kn", forecast_days: String(weatherDays), past_days: String(pastDays), timezone: "GMT",
 			});
 			const marineUrl = new URL("https://marine-api.open-meteo.com/v1/marine");
 			marineUrl.search = new URLSearchParams({
 				latitude: String(position.latitude), longitude: String(position.longitude),
 				hourly: "wave_height,wave_period,wave_direction,swell_wave_height,swell_wave_period,swell_wave_direction",
-				forecast_days: String(marineDays), timezone: "GMT",
+				forecast_days: String(marineDays), past_days: String(pastDays), timezone: "GMT",
 			});
 			return boundedProviderRequest(async (signal) => {
 				const [forecast, marine] = await Promise.all([

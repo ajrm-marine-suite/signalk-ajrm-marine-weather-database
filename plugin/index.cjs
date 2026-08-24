@@ -229,7 +229,7 @@ module.exports = function ajrmMarineWeatherDatabase(app) {
 		const longitude = values.longitude == null || values.longitude === "" ? NaN : Number(values.longitude);
 		return { contextLocationId:values.locationId || values.contextLocationId || undefined,
 			position:Number.isFinite(latitude) && Number.isFinite(longitude) ? { latitude,longitude } : undefined,
-			weatherDays:values.weatherDays, marineDays:values.marineDays };
+			weatherDays:values.weatherDays, marineDays:values.marineDays, pastDays:values.pastDays };
 	}
 	function subscribePosition() {
 		if (!app.subscriptionmanager?.subscribe) return;

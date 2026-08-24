@@ -60,6 +60,38 @@ test("forced weather refresh requires Signal K write access",async(t)=>{
 	assert.equal(refreshOperation.responses["400"].content["application/json"].schema.$ref,"#/components/schemas/ErrorResponse");
 	assert.equal(plugin.getOpenApi().components.schemas.ErrorResponse.required.includes("error"),true);
 	assert.equal(refreshOperation.responses["403"].description.includes("read/write"),true);
+	assert.deepEqual(refreshOperation.requestBody.content["application/json"].schema.properties.pastDays,{type:"integer",minimum:0,maximum:7,default:0,description:"Include this many completed GMT calendar days before the forecast period. Cache entries are isolated by this value."});
+	for(const pathName of ["/weather/status","/weather/nearest"]){
+		const parameter=plugin.getOpenApi().paths[pathName].get.parameters.find((entry)=>entry.name==="pastDays");
+		assert.deepEqual(parameter.schema,{type:"integer",minimum:0,maximum:7,default:0});
+	}
+});
+
+test("weather routes pass pastDays from GET queries and POST bodies to both Open-Meteo requests",async(t)=>{
+	const directory=await fsp.mkdtemp(path.join(os.tmpdir(),"ajrm-weather-history-routes-")); t.after(()=>fsp.rm(directory,{recursive:true,force:true}));
+	const originalFetch=globalThis.fetch; const urls=[];
+	globalThis.fetch=async(url)=>{urls.push(new URL(url));return{ok:true,async json(){
+		return String(url).includes("marine-api")
+			? {hourly:{time:["2026-08-24T07:00"],wave_height:[1],wave_period:[6],wave_direction:[180],swell_wave_height:[.5],swell_wave_period:[8],swell_wave_direction:[220]}}
+			: {hourly:{time:["2026-08-24T07:00"],temperature_2m:[12],wind_speed_10m:[8],wind_gusts_10m:[11],wind_direction_10m:[90]}};
+	}};};
+	t.after(()=>{globalThis.fetch=originalFetch;});
+	const app={getDataDirPath:()=>directory,setPluginStatus(){},handleMessage(){},subscriptionmanager:{subscribe(){}},ajrmMarineLocations:{async list(){return[];}}};
+	const plugin=createPlugin(app); plugin.start({openMeteoEnabled:true}); t.after(()=>plugin.stop());
+	const routes=new Map(); plugin.registerWithRouter({
+		get(route,handler){routes.set(`GET ${route}`,handler);},
+		post(route,handler){routes.set(`POST ${route}`,handler);},
+	});
+	const response=()=>({statusCode:200,status(code){this.statusCode=code;return this;},json(value){this.body=value;return this;}});
+	const getResponse=response();
+	await routes.get("GET /weather/status")({method:"GET",query:{latitude:"56.27",longitude:"-5.63",pastDays:"1"}},getResponse);
+	assert.equal(getResponse.statusCode,200); assert.equal(getResponse.body.valid,true);
+	const postResponse=response();
+	await routes.get("POST /weather/refresh")({method:"POST",body:{latitude:56.27,longitude:-5.63,pastDays:2}},postResponse);
+	assert.equal(postResponse.statusCode,200); assert.equal(postResponse.body.valid,true);
+	assert.equal(urls.length,4);
+	assert.deepEqual(urls.slice(0,2).map((url)=>url.searchParams.get("past_days")),["1","1"]);
+	assert.deepEqual(urls.slice(2).map((url)=>url.searchParams.get("past_days")),["2","2"]);
 });
 
 test("router registration falls back when Signal K access routers are unavailable",async(t)=>{

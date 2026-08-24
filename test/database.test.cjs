@@ -76,6 +76,51 @@ test("same-key requests share one provider refresh", async (t) => {
 	assert.equal(results[1].source.cache, "network");
 });
 
+test("present-only and past-day requests use isolated cache files and contexts", async (t) => {
+	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "ajrm-weather-history-cache-"));
+	t.after(() => fs.rm(directory, { recursive:true, force:true }));
+	const calls = [];
+	const provider = { id:"history", name:"History provider", enabled:true, configured:true,
+		persistentCachePermitted:true, capabilities:[], async fetch(request) {
+			calls.push(request.pastDays);
+			return { current:{ temperatureC:10 + request.pastDays },
+				hourly:{ forecast:{ pastDays:request.pastDays }, marine:null } };
+		} };
+	const providers = createProviderRegistry([provider], ["history"]);
+	const database = createWeatherDatabase({ directory, providers, staleAfterHours:1, expiresAfterHours:24 });
+	const position = { latitude:56.27, longitude:-5.63 };
+
+	const present = await database.resolve({ position, pastDays:0 });
+	const history = await database.resolve({ position, pastDays:1 });
+	const presentAgain = await database.resolve({ position, pastDays:0 });
+	const historyAgain = await database.resolve({ position, pastDays:1 });
+
+	assert.deepEqual(calls, [0, 1], "each history horizon fetches once and then reuses only its own cache");
+	assert.equal(present.source.cache, "network");
+	assert.equal(history.source.cache, "network");
+	assert.equal(presentAgain.source.cache, "hit");
+	assert.equal(historyAgain.source.cache, "hit");
+	assert.equal(present.current.temperatureC, 10);
+	assert.equal(history.current.temperatureC, 11);
+
+	const providerDirectory = path.join(directory, "history");
+	assert.deepEqual((await fs.readdir(providerDirectory)).sort(), [
+		"56.2700_-5.6300_16_8.json",
+		"56.2700_-5.6300_16_8_p1.json",
+	]);
+	const presentRecord = JSON.parse(await fs.readFile(path.join(providerDirectory, "56.2700_-5.6300_16_8.json"), "utf8"));
+	const historyRecord = JSON.parse(await fs.readFile(path.join(providerDirectory, "56.2700_-5.6300_16_8_p1.json"), "utf8"));
+	for (const record of [presentRecord, historyRecord]) {
+		assert.equal(record.cacheContext.contract, "ajrm-marine-weather-cache-context-v2");
+		assert.equal(record.cacheContext.contractVersion, 2);
+		assert.deepEqual(record.cacheContext.position, position);
+		assert.equal(record.cacheContext.weatherDays, 16);
+		assert.equal(record.cacheContext.marineDays, 8);
+	}
+	assert.equal(presentRecord.cacheContext.pastDays, 0);
+	assert.equal(historyRecord.cacheContext.pastDays, 1);
+});
+
 test("independent database instances use collision-safe atomic temporary files", async (t) => {
 	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "ajrm-weather-atomic-"));
 	t.after(() => fs.rm(directory, { recursive:true, force:true }));
@@ -199,7 +244,9 @@ test("nearest cached fallback selects one coordinate group and retains its locat
 	await database.resolve({ position:secondPosition, contextLocation:{ id:"second-location", name:"Second Point", types:["marina"], category:"Marina", position:secondPosition } });
 
 	const record = JSON.parse(await fs.readFile(path.join(directory, "first", "56.2000_-5.6000_16_8.json"), "utf8"));
-	assert.equal(record.cacheContext.contract, "ajrm-marine-weather-cache-context-v1");
+	assert.equal(record.cacheContext.contract, "ajrm-marine-weather-cache-context-v2");
+	assert.equal(record.cacheContext.contractVersion, 2);
+	assert.equal(record.cacheContext.pastDays, 0);
 	assert.deepEqual(record.cacheContext.position, firstPosition);
 	assert.equal(record.cacheContext.contextLocation.name, "First Point");
 
@@ -212,6 +259,42 @@ test("nearest cached fallback selects one coordinate group and retains its locat
 	assert.equal(result.source.cache, "nearest-fallback");
 	assert.equal(result.source.fallbackReason, "network unavailable");
 	assert.equal(result.sources.find((source) => source.providerId === "second").valid, false);
+});
+
+test("nearest cached fallback matches pastDays exactly and treats legacy caches as present-only", async (t) => {
+	const directory = await fs.mkdtemp(path.join(os.tmpdir(), "ajrm-weather-nearest-history-"));
+	t.after(() => fs.rm(directory, { recursive:true, force:true }));
+	const provider = { id:"history", name:"History provider", enabled:true, configured:true,
+		persistentCachePermitted:true, capabilities:[], async fetch(){ throw new Error("offline"); } };
+	const providers = createProviderRegistry([provider], ["history"]);
+	const database = createWeatherDatabase({ directory, providers, staleAfterHours:1, expiresAfterHours:24 });
+	const providerDirectory = path.join(directory, "history");
+	await fs.mkdir(providerDirectory, { recursive:true });
+	const fetchedAt = new Date().toISOString();
+	const record = (temperatureC, cacheContext) => ({ providerId:"history", providerName:"History provider", valid:true,
+		fetchedAt, persistent:true, ...(cacheContext ? { cacheContext } : {}), current:{ temperatureC },
+		hourly:{ forecast:{ temperatureC }, marine:null }, error:"", fallbackReason:null });
+	const legacyPosition = { latitude:56.27, longitude:-5.63 };
+	const historyPosition = { latitude:56.4, longitude:-5.8 };
+	await fs.writeFile(path.join(providerDirectory, "56.2700_-5.6300_16_8.json"), JSON.stringify(record(7)));
+	await fs.writeFile(path.join(providerDirectory, "56.4000_-5.8000_16_8_p1.json"), JSON.stringify(record(12, {
+		contract:"ajrm-marine-weather-cache-context-v2", contractVersion:2, position:historyPosition,
+		weatherDays:16, marineDays:8, pastDays:1, contextLocation:null,
+	})));
+
+	const requestedPosition = { latitude:56.2701, longitude:-5.6301 };
+	const history = await database.nearestCached({ position:requestedPosition, pastDays:1 });
+	assert.equal(history.valid, true);
+	assert.deepEqual(history.position, historyPosition, "a nearer legacy p0 entry must not satisfy p1");
+	assert.equal(history.current.temperatureC, 12);
+
+	const present = await database.nearestCached({ position:requestedPosition, pastDays:0 });
+	assert.equal(present.valid, true);
+	assert.deepEqual(present.position, legacyPosition, "a filename-only legacy entry remains compatible with p0");
+	assert.equal(present.current.temperatureC, 7);
+
+	const unavailable = await database.nearestCached({ position:requestedPosition, pastDays:2 });
+	assert.equal(unavailable.valid, false, "no other history horizon may leak into a p2 request");
 });
 
 test("nearest cached fallback reads legacy horizons and rejects expired entries", async (t) => {

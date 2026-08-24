@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.11 — 2026-08-24
+
+- Add optional `pastDays` requests, defaulting to zero, and pass the bounded
+  value to both Open-Meteo weather and marine requests while retaining GMT
+  provider timestamps.
+- Isolate present-only and past-day responses in distinct cache files and
+  contexts; nearest-cache fallback now requires an exact history horizon and
+  treats legacy cache files as present-only.
+- Let Marine Planning request one past day so its Europe/London current-day
+  table can include 00:00 during BST without changing other consumers.
+- Keep the current summary tied to the hour nearest now even when the hourly
+  payload includes prior-day rows.
+
 ## 0.1.10 — 2026-08-23
 
 - Coalesce concurrent refreshes for the same provider/cache key and use unique
